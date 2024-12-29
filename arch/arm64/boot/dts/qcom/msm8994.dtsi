@@ -166,7 +166,7 @@
 		device_type = "memory";
 		/* We expect the bootloader to fill in the reg */
 		reg = <0 0x80000000 0 0>;
-	};
+		};
 
 	pmu {
 		compatible = "arm,cortex-a53-pmu";
@@ -195,6 +195,14 @@
 					compatible = "qcom,rpmcc-msm8994", "qcom,rpmcc";
 					#clock-cells = <1>;
 				};
+
+				/*
+				 * MSM8994 features 4 power rails:
+				 * - VDDCX (SMPA1 & SMPA6, corner)
+				 * - VDDCX_VFC (SMPA1, floor_corner)
+				 * - VDDMX (SMPA2 & SMPA12, corner)
+				 * - VDDGFX (SMPB2 & SMPB3, corner)
+				 */
 
 				rpmpd: power-controller {
 					compatible = "qcom,msm8994-rpmpd";
@@ -498,13 +506,13 @@
 
 			clocks = <&gcc GCC_SDCC2_AHB_CLK>,
 				 <&gcc GCC_SDCC2_APPS_CLK>,
-				 <&xo_board>;
+				<&xo_board>;
 			clock-names = "iface", "core", "xo";
 
 			pinctrl-names = "default", "sleep";
 			pinctrl-0 = <&sdc2_clk_on &sdc2_cmd_on &sdc2_data_on>;
 			pinctrl-1 = <&sdc2_clk_off &sdc2_cmd_off &sdc2_data_off>;
-
+			
 			cd-gpios = <&tlmm 100 GPIO_ACTIVE_HIGH>;
 			bus-width = <4>;
 			status = "disabled";
@@ -722,6 +730,13 @@
 			status = "disabled";
 		};
 
+		rng@f9bff000 {
+			compatible = "qcom,prng";
+			reg = <0xf9bff000 0x200>;
+			clocks = <&gcc GCC_PRNG_AHB_CLK>;
+			clock-names = "core";
+		};
+
 		gcc: clock-controller@fc400000 {
 			compatible = "qcom,gcc-msm8994";
 			#clock-cells = <1>;
@@ -732,6 +747,132 @@
 			clock-names = "xo", "sleep";
 			clocks = <&xo_board>, <&sleep_clk>;
 		};
+
+		mss_pil: remoteproc@fc880000 {
+			compatible = "qcom,msm8994-mss-pil";
+			reg = <0xfc880000 0x100>, <0xfc820000 0x20>;
+			reg-names = "qdsp6", "rmb";
+
+			interrupts-extended = <&intc GIC_SPI 24 IRQ_TYPE_EDGE_RISING>,
+					      <&modem_smp2p_in 0 IRQ_TYPE_EDGE_RISING>,
+					      <&modem_smp2p_in 1 IRQ_TYPE_EDGE_RISING>,
+					      <&modem_smp2p_in 2 IRQ_TYPE_EDGE_RISING>,
+					      <&modem_smp2p_in 3 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "wdog", "fatal", "ready", "handover", "stop-ack";
+
+			clocks = <&rpmcc RPM_SMD_MSS_CFG_AHB_CLK>,
+				 <&gcc GCC_MSS_Q6_BIMC_AXI_CLK>,
+				 <&gcc GCC_BOOT_ROM_AHB_CLK>,
+				 <&gcc GPLL0_OUT_MSSCC>,
+				 <&xo_board>;
+			clock-names = "iface", "bus", "mem", "gpll0_mss", "xo";
+
+			resets = <&gcc MSS_RESET>;
+			reset-names = "mss_restart";
+
+			power-domains =	<&rpmpd MSM8994_VDDCX>,
+					<&rpmpd MSM8994_VDDMX>;
+			power-domain-names = "cx", "mx";
+
+			/*
+			 * You need to add pll-supply (which is likely pm8994_l12)
+			 * to your board DTSI, like so:
+			 * &mss_pil {
+			 * 	pll-supply = <&pm8994_l12>;
+			 * };
+			 */
+
+			qcom,halt-regs = <&tcsr_mutex 0x1180 0x1200 0x1280>;
+
+			qcom,smem-states = <&modem_smp2p_out 0>;
+			qcom,smem-state-names = "stop";
+
+			mba {
+				memory-region = <&mba_mem>;
+			};
+
+			mpss {
+				memory-region = <&mpss_mem>;
+			};
+
+			smd-edge {
+				interrupts = <GIC_SPI 25 IRQ_TYPE_EDGE_RISING>;
+
+				qcom,ipc = <&apcs 8 12>;
+				qcom,smd-edge = <0>;
+
+				label = "modem";
+			};
+		};
+
+		gpu: gpu@fdb00000 {
+			/*
+			 * note: the amd,imageon compatible makes it possible
+			 * to use the drm/msm driver without the display node,
+			 * make sure to remove it when display node is added
+			 */
+			compatible = "qcom,adreno-430.0", "qcom,adreno", "amd,imageon";
+			reg = <0xfdb00000 0x40000>;
+			status = "disabled";
+			reg-names = "kgsl_3d0_reg_memory";
+			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "kgsl_3d0_irq";
+			clock-names =
+			    "core",
+			    "iface",
+			    "rbbmtimer";
+			clocks =
+			    <&mmcc OXILI_GFX3D_CLK>,
+			    <&mmcc OXILICX_AHB_CLK>,
+			    <&mmcc OXILI_RBBMTIMER_CLK>;
+			power-domains = <&mmcc OXILI_GX_GDSC>;
+			operating-points-v2 = <&gpu_opp_table>;
+			sram = <&gmu_sram>;
+
+			gpu_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-180000000 {
+					opp-hz = /bits/ 64 <180000000>;
+				};
+				opp-27000000 {
+					opp-hz = /bits/ 64 <27000000>;
+				};
+			};
+		};
+
+		adsp_pil: remoteproc@fe200000 {
+			compatible = "qcom,msm8994-adsp-pil";
+			reg = <0xfe200000 0x80000>;
+
+			interrupts-extended = <&intc 0 162 IRQ_TYPE_EDGE_RISING>,
+					      <&adsp_smp2p_in 0 IRQ_TYPE_EDGE_RISING>,
+					      <&adsp_smp2p_in 1 IRQ_TYPE_EDGE_RISING>,
+					      <&adsp_smp2p_in 2 IRQ_TYPE_EDGE_RISING>,
+					      <&adsp_smp2p_in 3 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "wdog", "fatal", "ready",
+					  "handover", "stop-ack";
+
+			clocks = <&xo_board>;
+			clock-names = "xo";
+
+			memory-region = <&adsp_mem>;
+
+			qcom,smem-states = <&adsp_smp2p_out 0>;
+			qcom,smem-state-names = "stop";
+
+			smd-edge {
+				interrupts = <GIC_SPI 156 IRQ_TYPE_EDGE_RISING>;
+
+				label = "lpass";
+				qcom,ipc = <&apcs 8 10>;
+				qcom,smd-edge = <1>;
+
+				#address-cells = <1>;
+				#size-cells = <0>;
+			};
+		};
+
 
 		rpm_msg_ram: sram@fc428000 {
 			compatible = "qcom,rpm-msg-ram";
@@ -898,8 +1039,8 @@
 				cs-pins {
 					pins = "gpio67";
 					function = "gpio";
-					drive-strength = <2>;
-					bias-disable;
+				drive-strength = <2>;
+				bias-disable;
 				};
 			};
 
@@ -913,8 +1054,8 @@
 			i2c11_default: i2c11-default-state {
 				pins = "gpio83", "gpio84";
 				function = "blsp_i2c11";
-				drive-strength = <2>;
-				bias-disable;
+					drive-strength = <2>;
+					bias-disable;
 			};
 
 			i2c11_sleep: i2c11-sleep-state {
@@ -1038,28 +1179,28 @@
 			#power-domain-cells = <1>;
 
 			clock-names = "xo",
-				      "gpll0",
-				      "mmssnoc_ahb",
-				      "oxili_gfx3d_clk_src",
-				      "dsi0pll",
-				      "dsi0pllbyte",
-				      "dsi1pll",
-				      "dsi1pllbyte",
-				      "hdmipll";
+					"gpll0",
+					"mmssnoc_ahb",
+					"oxili_gfx3d_clk_src",
+					"dsi0pll",
+					"dsi0pllbyte",
+					"dsi1pll",
+					"dsi1pllbyte",
+					"hdmipll";
 			clocks = <&xo_board>,
-				 <&gcc GPLL0_OUT_MMSSCC>,
-				 <&rpmcc RPM_SMD_MMSSNOC_AHB_CLK>,
-				 <&rpmcc RPM_SMD_GFX3D_CLK_SRC>,
-				 <0>,
-				 <0>,
-				 <0>,
-				 <0>,
-				 <0>;
+					<&gcc GPLL0_OUT_MMSSCC>,
+					<&rpmcc RPM_SMD_MMSSNOC_AHB_CLK>,
+					<&rpmcc RPM_SMD_GFX3D_CLK_SRC>,
+					<&dsi0_phy 1>,
+					<&dsi0_phy 0>,
+					<&dsi1_phy 1>,
+					<&dsi1_phy 0>,
+					<&hdmi_phy 0>;
 
 			assigned-clocks = <&mmcc MMPLL0_PLL>,
 					  <&mmcc MMPLL1_PLL>,
 					  <&mmcc MMPLL3_PLL>,
-					  <&mmcc MMPLL4_PLL>,
+					  <&mmcc MMPLL4_PLL>,		
 					  <&mmcc MMPLL5_PLL>;
 			assigned-clock-rates = <800000000>,
 					       <1167000000>,
@@ -1068,14 +1209,278 @@
 					       <600000000>;
 		};
 
+
+		mdss: mdss@fd900000 {
+			compatible = "qcom,mdss";
+			status = "disabled";
+			reg = <0xfd900000 0x1000>,
+			      <0xfd9b0000 0x4d4>;
+			reg-names = "mdss_phys", "vbif_phys";
+
+			power-domains = <&mmcc MDSS_GDSC>;
+
+			clocks = <&mmcc MDSS_AHB_CLK>,
+				 <&mmcc MDSS_AXI_CLK>,
+				 <&mmcc MDSS_VSYNC_CLK>;
+			clock-names = "iface", "bus", "vsync";
+
+			interrupts = <0 83 IRQ_TYPE_LEVEL_HIGH>;
+
+			interrupt-controller;
+			#interrupt-cells = <1>;
+
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+
+			mdp: mdp@fd901000 {
+				compatible = "qcom,mdp5";
+				reg = <0xfd901000 0x89000>;
+				reg-names = "mdp_phys";
+
+				interrupt-parent = <&mdss>;
+				interrupts = <0>;
+
+				clocks = <&mmcc MDSS_AHB_CLK>,
+					 <&mmcc MDSS_AXI_CLK>,
+					 <&mmcc MDSS_MDP_CLK>,
+					 <&mmcc MDSS_VSYNC_CLK>;
+				clock-names = "iface",
+					      "bus",
+					      "core",
+					      "vsync";
+
+				assigned-clocks = <&mmcc MDSS_MDP_CLK>,
+						  <&mmcc MDSS_VSYNC_CLK>;
+				assigned-clock-rates = <300000000>,
+						       <19200000>;
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+						mdp5_intf1_out: endpoint {
+							remote-endpoint = <&dsi0_in>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+						mdp5_intf2_out: endpoint {
+							remote-endpoint = <&dsi1_in>;
+						};
+					};
+
+					port@2 {
+						reg = <2>;
+						mdp5_intf3_out: endpoint {
+							remote-endpoint = <&hdmi_in>;
+						};
+					};
+				};
+			};
+
+			dsi0: dsi@fd998000 {
+				compatible = "qcom,mdss-dsi-ctrl";
+				reg = <0xfd998000 0x25c>;
+				reg-names = "dsi_ctrl";
+
+				interrupt-parent = <&mdss>;
+				interrupts = <4 IRQ_TYPE_LEVEL_HIGH>;
+
+				assigned-clocks = <&mmcc BYTE0_CLK_SRC>,
+						  <&mmcc PCLK0_CLK_SRC>;
+				assigned-clock-parents = <&dsi0_phy 0>,
+							 <&dsi0_phy 1>;
+
+				clocks = <&mmcc MDSS_MDP_CLK>,
+					 <&mmcc MDSS_AHB_CLK>,
+					 <&mmcc MDSS_AXI_CLK>,
+					 <&mmcc MDSS_BYTE0_CLK>,
+					 <&mmcc MDSS_PCLK0_CLK>,
+					 <&mmcc MDSS_ESC0_CLK>;
+				clock-names = "mdp_core",
+					      "iface",
+					      "bus",
+					      "byte",
+					      "pixel",
+					      "core";
+				phys = <&dsi0_phy>;
+				phy-names = "dsi-phy";
+
+				dsi0_ports: ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+						dsi0_in: endpoint {
+							remote-endpoint = <&mdp5_intf1_out>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+						dsi0_out: endpoint {
+						};
+					};
+				};
+			};
+
+			dsi0_phy: dsi-phy@fd998500 {
+				compatible = "qcom,dsi-phy-20nm";
+				reg = <0xfd998500 0x280>,
+				      <0xfd998300 0xd4>,
+				      <0xfd998780 0x30>;
+				reg-names = "dsi_phy",
+					    "dsi_pll",
+					    "dsi_phy_regulator";
+
+				#clock-cells = <1>;
+				#phy-cells = <0>;
+
+				clocks = <&mmcc MDSS_AHB_CLK>,
+					 <&xo_board>;
+				clock-names = "iface", "ref";
+			};
+
+			dsi1: dsi@fd9a0000 {
+				compatible = "qcom,mdss-dsi-ctrl";
+				reg = <0xfd9a0000 0x25c>;
+				reg-names = "dsi_ctrl";
+
+				interrupt-parent = <&mdss>;
+				interrupts = <5 IRQ_TYPE_LEVEL_HIGH>;
+
+				assigned-clocks = <&mmcc BYTE1_CLK_SRC>,
+						  <&mmcc PCLK1_CLK_SRC>;
+				assigned-clock-parents = <&dsi1_phy 0>,
+							 <&dsi1_phy 1>;
+
+				clocks = <&mmcc MDSS_MDP_CLK>,
+					 <&mmcc MDSS_AHB_CLK>,
+					 <&mmcc MDSS_AXI_CLK>,
+					 <&mmcc MDSS_BYTE1_CLK>,
+					 <&mmcc MDSS_PCLK1_CLK>,
+					 <&mmcc MDSS_ESC1_CLK>;
+				clock-names = "mdp_core",
+					      "iface",
+					      "bus",
+					      "byte",
+					      "pixel",
+					      "core";
+				phys = <&dsi1_phy>;
+				phy-names = "dsi-phy";
+
+				dsi1_ports: ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+						dsi1_in: endpoint {
+							remote-endpoint = <&mdp5_intf2_out>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+						dsi1_out: endpoint {
+						};
+					};
+				};
+			};
+
+			dsi1_phy: dsi-phy@fd9a0500 {
+				compatible = "qcom,dsi-phy-20nm";
+				reg = <0xfd9a0500 0x280>,
+				      <0xfd9a0300 0xd4>,
+				      <0xfd9a0780 0x30>;
+				reg-names = "dsi_phy",
+					    "dsi_pll",
+					    "dsi_phy_regulator";
+
+				#clock-cells = <1>;
+				#phy-cells = <0>;
+
+				clocks = <&mmcc MDSS_AHB_CLK>,
+					 <&xo_board>;
+				clock-names = "iface", "ref";
+			};
+
+			hdmi: hdmi-tx@fd9a8000 {
+				compatible = "qcom,hdmi-tx-8994";
+				reg =	<0xfd9a8000 0x38c>,
+					<0xfc4b8000 0x6fff>,
+					<0x009e0000 0xfff>;
+				reg-names = "core_physical",
+					    "qfprom_physical";
+
+				interrupt-parent = <&mdss>;
+				interrupts = <8 IRQ_TYPE_LEVEL_HIGH>;
+
+				clocks = <&mmcc MDSS_MDP_CLK>,
+					 <&mmcc MDSS_AHB_CLK>,
+					 <&mmcc MDSS_HDMI_CLK>,
+					 <&mmcc MDSS_HDMI_AHB_CLK>,
+					 <&mmcc MDSS_EXTPCLK_CLK>;
+				clock-names =
+					"mdp_core",
+					"iface",
+					"core",
+					"alt_iface",
+					"extp";
+
+				phys = <&hdmi_phy>;
+				phy-names = "hdmi_phy";
+				#sound-dai-cells = <1>;
+
+				hdmi_ports: ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+						hdmi_in: endpoint {
+							remote-endpoint = <&mdp5_intf3_out>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+						hdmi_out: endpoint {
+						};
+					};
+				};
+			};
+
+			hdmi_phy: hdmi-phy@fd9a9200 {
+				compatible = "qcom,hdmi-phy-8994";
+				reg = <0xfd9a8600 0xac4>,
+				      <0xfd9a9200 0x0c8>;
+				reg-names = "hdmi_pll",
+					    "hdmi_phy";
+
+				#clock-cells = <1>;
+				#phy-cells = <0>;
+
+				clocks = <&mmcc MDSS_AHB_CLK>,
+					 <&mmcc MDSS_HDMI_AHB_CLK>;
+				clock-names = "iface",
+					      "alt_iface";
+			};
+		};
+
 		ocmem: sram@fdd00000 {
 			compatible = "qcom,msm8974-ocmem";
 			reg = <0xfdd00000 0x2000>,
-			      <0xfec00000 0x200000>;
+				<0xfec00000 0x200000>;
 			reg-names = "ctrl", "mem";
 			ranges = <0 0xfec00000 0x200000>;
 			clocks = <&rpmcc RPM_SMD_OCMEMGX_CLK>,
-				 <&mmcc OCMEMCX_OCMEMNOC_CLK>;
+					<&mmcc OCMEMCX_OCMEMNOC_CLK>;
 			clock-names = "core", "iface";
 
 			#address-cells = <1>;
@@ -1094,7 +1499,7 @@
 			     <GIC_PPI 4 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
 			     <GIC_PPI 1 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
 	};
-
+	
 	vph_pwr: vph-pwr-regulator {
 		compatible = "regulator-fixed";
 		regulator-name = "vph_pwr";

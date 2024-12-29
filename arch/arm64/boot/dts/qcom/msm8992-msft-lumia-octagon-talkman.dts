@@ -14,3 +14,11 @@
 	compatible = "microsoft,talkman", "qcom,msm8992";
 	chassis-type = "handset";
 };
+
+&adsp_pil {
+	firmware-name = "qcom/msft/talkman/qcadsp8992.mbn";
+};
+
+&mss_pil {
+	firmware-name = "qcom/msft/talkman/qcdsp1v28992.mbn", "qcom/msft/talkman/qcdsp28992.mbn";
+};

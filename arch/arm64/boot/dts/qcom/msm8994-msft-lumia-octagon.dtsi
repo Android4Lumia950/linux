@@ -5,6 +5,7 @@
  *
  * Copyright (c) 2020, Konrad Dybcio
  * Copyright (c) 2020, Gustave Monce <gustave.monce@outlook.com>
+ * Copyright (c) 2024, Girjeu Efim <efimgirjeu3@gmail.com>
  */
 
 #include "pm8994.dtsi"
@@ -19,7 +20,6 @@
  */
 /delete-node/ &adsp_mem;
 /delete-node/ &audio_mem;
-/delete-node/ &cont_splash_mem;
 /delete-node/ &mba_mem;
 /delete-node/ &mpss_mem;
 /delete-node/ &peripheral_region;
@@ -27,23 +27,64 @@
 /delete-node/ &rmtfs_mem;
 /delete-node/ &smem_mem;
 
+/* cont_splash_mem has different memory mapping */
+/delete-node/ &cont_splash_mem;
+
+/* disabled on downstream, conflicts with cont_splash_mem */
+/delete-node/ &dfps_data_mem;
+
 / {
 	/*
-	 * Most Lumia 950/XL users use GRUB to load their kernels,
+	 * Most Lumia 950/XL users use GRUB or lk2nd to load their kernels,
 	 * hence there is no need for msm-id and friends.
 	 */
+	aliases {
+		display0 = &framebuffer0;
+	};
 
-	/*
-	 * This enables graphical output via bootloader-enabled display.
-	 * acpi=no is required due to WP platforms having ACPI support, but
-	 * only for Windows-based OSes.
-	 */
 	chosen {
-		bootargs = "earlycon=efifb console=efifb acpi=no";
-
+		bootargs = "clk_ignore_unused";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+
+
+		/* Use display framebuffer setup by the UEFI XBL bootloader for simplefb */
+		framebuffer0: framebuffer@3400000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0x03400000 0x0 0xc00000>;
+			width = <1080>;
+			height = <1920>;
+			stride = <(1080 * 4)>;
+			format = "a8r8g8b8";
+			/*
+			* That's a lot of clocks, but it's necessary due
+			* to unused clk cleanup & no panel driver yet..
+			*/
+			clocks = <&mmcc MDSS_AHB_CLK>,
+				 <&mmcc MDSS_AXI_CLK>,
+				 <&mmcc MDSS_VSYNC_CLK>,
+				 <&mmcc MDSS_MDP_CLK>,
+				 <&mmcc MDSS_BYTE0_CLK>,
+				 <&mmcc MDSS_PCLK0_CLK>,
+				 <&mmcc MDSS_ESC0_CLK>;
+			power-domains = <&mmcc MDSS_GDSC>;
+		};
+};
+
+	clocks {
+			compatible = "simple-bus";
+
+		divclk1: divclk1 {
+			compatible = "gpio-gate-clock";
+			#clock-cells = <0>;
+
+			clocks = <&rpmcc RPM_SMD_DIV_CLK1>;
+			enable-gpios = <&pm8994_gpios 15 0>;
+			
+			pinctrl-names = "default";
+			pinctrl-0 = <&audio_mclk>;
+		};
 	};
 
 	clocks {
@@ -56,6 +97,17 @@
 
 			pinctrl-names = "default";
 			pinctrl-0 = <&divclk4_pin_a>;
+		};
+	};
+
+	hdmi-out {
+		compatible = "hdmi-connector";
+		type = "a";
+
+		port {
+			hdmi_con: endpoint {
+				remote-endpoint = <&anx7816_out_edp>;
+			};
 		};
 	};
 
@@ -125,68 +177,8 @@
 		 * using JTAG for the Qualcomm Peripheral Image regions.
 		 */
 
-		uefi_mem: memory@200000 {
-			reg = <0 0x00200000 0 0x100000>;
-			no-map;
-		};
-
-		mppark_mem: memory@300000 {
-			reg = <0 0x00300000 0 0x80000>;
-			no-map;
-		};
-
-		fbpt_mem: memory@380000 {
-			reg = <0 0x00380000 0 0x1000>;
-			no-map;
-		};
-
-		dbg2_mem: memory@381000 {
-			reg = <0 0x00381000 0 0x4000>;
-			no-map;
-		};
-
-		capsule_mem: memory@385000 {
-			reg = <0 0x00385000 0 0x1000>;
-			no-map;
-		};
-
-		tpmctrl_mem: memory@386000 {
-			reg = <0 0x00386000 0 0x3000>;
-			no-map;
-		};
-
-		uefiinfo_mem: memory@389000 {
-			reg = <0 0x00389000 0 0x1000>;
-			no-map;
-		};
-
-		reset_mem: memory@389000 {
-			reg = <0 0x00389000 0 0x1000>;
-			no-map;
-		};
-
-		resuncached_mem: memory@38e000 {
-			reg = <0 0x0038e000 0 0x72000>;
-			no-map;
-		};
-
-		disp_mem: memory@400000 {
-			reg = <0 0x00400000 0 0x800000>;
-			no-map;
-		};
-
-		uefistack_mem: memory@c00000 {
-			reg = <0 0x00c00000 0 0x40000>;
-			no-map;
-		};
-
-		cpuvect_mem: memory@c40000 {
-			reg = <0 0x00c40000 0 0x10000>;
-			no-map;
-		};
-
-		rescached_mem: memory@400000 {
-			reg = <0 0x00c50000 0 0xb0000>;
+		cont_splash_mem: memory@3400000 {
+			reg = <0 0x03400000 0 0xc00000>;
 			no-map;
 		};
 
@@ -210,11 +202,16 @@
 			no-map;
 		};
 
+		/*
+		 * Value obtained from the device original ACPI DSDT table
+		 * ADSP_EFS
+		 */
 		rfsa_adsp_mem: memory@6e60000 {
 			reg = <0 0x06e60000 0 0x10000>;
 			no-map;
 		};
 
+		/* Value obtained from the device original ACPI DSDT table */
 		rfsa_mpss_mem: memory@6e70000 {
 			compatible = "qcom,rmtfs-mem";
 			reg = <0 0x06e70000 0 0x10000>;
@@ -226,6 +223,8 @@
 		/*
 		 * Value obtained from the device original ACPI DSDT table
 		 * MPSS_EFS / SBL
+		 *
+		 * Here goes MBA
 		 */
 		mba_mem: memory@6e80000 {
 			reg = <0 0x06e80000 0 0x180000>;
@@ -237,21 +236,25 @@
 		 * The region reserved for pil is 0x7000000-0xef00000
 		 */
 
+		/* Here goes AMSS */
 		mpss_mem: memory@7000000 {
 			reg = <0 0x07000000 0 0x5a00000>;
 			no-map;
 		};
 
+		/* Here goes ADSP */
 		adsp_mem: memory@ca00000 {
 			reg = <0 0x0ca00000 0 0x1800000>;
 			no-map;
 		};
 
+		/* Here goes VSS */
 		venus_mem: memory@e200000 {
 			reg = <0 0x0e200000 0 0x500000>;
 			no-map;
 		};
 
+		/* Here goes PIL metadata */
 		pil_metadata_mem: memory@e700000 {
 			reg = <0 0x0e700000 0 0x4000>;
 			no-map;
@@ -268,6 +271,78 @@
 			no-map;
 		};
 	};
+};
+
+
+/*
+ * When cci_i2c buses are brought up,
+ * 3 camera sensors need to be added as follows:
+ *
+ * &cci_i2c0 {
+ *  // H1400/1 Ducati (FF CAM FPC) (Front) (Sharp)
+ *	ffc_sensor: ffc-sensor@20 {
+ *		compatible = "nokia,smia";
+ *
+ *		reg = <0x20>;
+ *
+ *		reset-gpios = <&tlmm 104 GPIO_ACTIVE_HIGH>;
+ *		vana-supply = <&vreg_l17a_2p7>;
+ *
+ *		clocks = <&CAM_MCLK2 0>;
+ *		clock-frequency = <xxxxxx>;
+ *		...
+ *	};
+ *
+ *  // H1000/1 Siiri (IRIS CAM FPC) (Iris) (Toshiba) (T4KE1)
+ *	iris_sensor: iris-sensor@6c {
+ *		compatible = "nokia,smia";
+ *
+ *		reg = <0x6c>;
+ *
+ *		reset-gpios = <&tlmm 102 GPIO_ACTIVE_HIGH>;
+ *		vana-supply = <&vreg_l17a_2p7>;
+ *
+ *		clocks = <&CAM_MCLK1 0>;
+ *		clock-frequency = <xxxxxx>;
+ *		...
+ *	};
+ *
+ * Also on the same bus: 
+ * Austrianmicrosystems AS3638 triple LED flash controller (No driver available)
+ * };
+ *
+ * &cci_i2c1 {
+ *  // N1400/1 Hill (Sub board FPC) (Rear) (Sony) (IMX230)
+ *	rfc_sensor: rfc-sensor@20 {
+ *		compatible = "nokia,smia";
+ *
+ *		reg = <0x20>;
+ *
+ *		reset-gpios = <&tlmm 106 GPIO_ACTIVE_HIGH>; // This is either 105 or 106
+ *		vana-supply = <&vreg_l29a_2p8>;
+ *
+ *		clocks = <&CAM_MCLK0 0>;
+ *		clock-frequency = <xxxxxx>;
+ *		link-frequencies = ...;
+ *
+ *		port {
+ *			smiapp_ep: endpoint {
+ *				data-lanes = <... ...>;
+ *				remote-endpoint = <&...>;
+ *			};
+ *		};
+ *	};
+ * };
+ */
+
+&hdmi_out {
+	remote-endpoint = <&anx7816_in_tcon0>;
+};
+
+&framebuffer0 {
+	width = <1080>;
+	height = <1920>;
+	stride = <(1080 * 4)>;
 };
 
 &blsp1_i2c1 {
@@ -447,6 +522,44 @@
 	status = "okay";
 
 	/*
+	 * This device uses the Analogix ANX7816, however the ANX7816 driver
+	 * seems to work here. In the future a proper driver might need to
+	 * be written for this device.
+	 */
+	anx7816: anx7816@72 {
+		compatible = "analogix,anx7814";
+
+		reg = <0x72>;
+
+		interrupt-parent = <&tlmm>;
+		interrupts = <41 IRQ_TYPE_EDGE_FALLING>;
+
+		hpd-gpios = <&pmi8994_gpios 2 GPIO_ACTIVE_HIGH>;
+		pd-gpios = <&pmi8994_gpios 6 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&pmi8994_gpios 7 GPIO_ACTIVE_HIGH>;
+
+		dvdd10-supply = <&vreg_l27a_1p05>;
+
+		port {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			anx7816_in: port@0 {
+				reg = <0>;
+				anx7816_in_tcon0: endpoint {
+					remote-endpoint = <&hdmi_out>;
+				};
+			};
+
+			anx7816_out: port@1 {
+				reg = <1>;
+				anx7816_out_edp: endpoint {
+					remote-endpoint = <&hdmi_con>;
+				};
+			};
+		};
+	};
+	/*
 	 * This device is a Lattice UC120 USB-C PD PHY.
 	 * It is actually a Lattice iCE40 FPGA pre-programmed by
 	 * the device firmware with a specific bitstream
@@ -466,16 +579,45 @@
 
 &blsp2_uart2 {
 	status = "okay";
-
+	uart-has-rtscts;
 	qca6174_bt: bluetooth {
 		compatible = "qcom,qca6174-bt";
-
+		pinctrl-names = "default";
+		pinctrl-0 = <&bt_en_gpios>;
 		enable-gpios = <&pm8994_gpios 19 GPIO_ACTIVE_HIGH>;
 		clocks = <&divclk4>;
 	};
 };
 
+&mss_pil {
+	status = "okay";
+	pll-supply = <&vreg_s7a_1p0>;
+};
+
 &pm8994_gpios {
+	gpio-line-names = 
+		"NC",
+		"WLC_EN", /* GPIO_02 */
+		"VOL_UP_N", /* GPIO_03 */
+		"SNAPSHOT_N", /* GPIO_04 */
+		"FOCUS_N", /* GPIO_05 */
+		"NC",
+		"NFC_PWR_REQ", /* GPIO_07 */
+		"SD_CARD_DET", /* GPIO_08 */
+		"WLAN_LDO_3V_CTRL", /* GPIO_09 */
+		"NFC_CLK_REQ", /* GPIO_10 */
+		"WLAN_PWR_REQ", /* GPIO_11 */
+		"IHF_LEFT_EN", /* GPIO_12 */
+		"VCONN_OUT_EN", /* GPIO_13 */
+		"WLC_DET", /* GPIO_14 */
+		"DIVCLK1_CDC", /* GPIO_15 */
+		"PMI_CLK", /* GPIO_16 */
+		"DP_PD_CLK", /* GPIO_17 */
+		"DIVCLK4", /* GPIO_18 */
+		"BT_EN", /* GPIO_19 */
+		"PMI_SPON", /* GPIO_20 */
+		"BUA_PMI8994"; /* GPIO_21 */
+
 	bt_en_gpios: bt-en-gpios-state {
 		pinconf {
 			pins = "gpio19";
@@ -486,6 +628,15 @@
 			bias-pull-down;
 		};
 	};
+
+	audio_mclk: clk_div1 {
+		pinconf {
+			pins = "gpio15";
+			function = PMIC_GPIO_FUNC_FUNC1;
+			power-source = <PM8994_GPIO_S4>;
+		};
+	};
+
 
 	divclk4_pin_a: divclk4-state {
 		pinconf {
@@ -514,6 +665,17 @@
 };
 
 &pmi8994_gpios {
+	gpio-line-names =
+		"NC",
+		"DP_HPD", /* GPIO_2 */
+		"NC",
+		"PD_EN", /* GPIO_4 */
+		"TYPEC_VBUS_EN", /* GPIO_5 */
+		"DP_CHIP_PD", /* GPIO_6 */
+		"DP_EN", /* GPIO_7 */
+		"SS_POL", /* GPIO_8 */
+		"SS_MUX_SEL", /* GPIO_9 */
+		"SS_MUX_EN"; /* GPIO_10 */
 	pinctrl-0 = <&hd3ss460_pol &hd3ss460_amsel &hd3ss460_en>;
 	pinctrl-names = "default";
 
@@ -886,6 +1048,150 @@
 };
 
 &tlmm {
+	gpio-line-names = 
+		"NC",
+		"NC",
+		"TOUCH_I2C_DATA", /* GPIO_2 */
+		"TOUCH_I2C_CLK", /* GPIO_3 */
+		"NC",
+		"NC",
+		"AUDIO_I2C_DATA", /* GPIO_6 */
+		"AUDIO_I2C_CLK", /* GPIO_7 */
+		"FLASH_EN", /* GPIO_8 */
+		"FM_INT_N", /* GPIO_9 */
+		"DISPLAY_TEARING", /* GPIO_10 */
+		"NC",
+		"TORCH_EN", /* GPIO_12 */
+		"CAM_MCLK0", /* GPIO_13 */
+		"CAM_MCLK1", /* GPIO_14 */
+		"CAM_MCLK2", /* GPIO_15 */
+		"NC",
+		"CCI0_I2C_DATA", /* GPIO_17 */
+		"CCI0_I2C_CLK", /* GPIO_18 */
+		"CCI1_I2C_DATA", /* GPIO_19 */
+		"CCI1_I2C_CLK", /* GPIO_20 */
+		"NC",
+		"CPLUG_DET", /* GPIO_22 */
+		"SENSORS1_I2C_DATA", /* GPIO_23 */
+		"SENSORS1_I2C_CLK", /* GPIO_24 */
+		"NC",
+		"MAGNETOMETER_INT", /* GPIO_26 */
+		"NFC_I2C_DATA", /* GPIO_27 */
+		"NFC_I2C_CLK", /* GPIO_28 */
+		"NFC_IRQ", /* GPIO_29 */
+		"NFC_ENABLE", /* GPIO_30 */
+		"CEC", /* GPIO_31 */
+		"SCL", /* GPIO_32 */
+		"SDA", /* GPIO_33 */
+		"HDMI_HOT_PLUG_DET", /* GPIO_34 */
+		"PCIE_WL_RST_N", /* GPIO_35 */
+		"PCIE_WL_CLK_REQ_N", /* GPIO_36 */
+		"PCIE_WL_WAKE_N", /* GPIO_37 */
+		"TOUCH_RESET_N", /* GPIO_38 */
+		"GRIP_RST_N", /* GPIO_39 */
+		"PROX_INT_N", /* GPIO_40 */
+		"DP_INT", /* GPIO_41 */
+		"HAL_SWITCH", /* GPIO_42 */
+		"SENSORS2_I2C_DATA", /* GPIO_43 */
+		"SENSORS2_I2C_CLK", /* GPIO_44 */
+		"BT_UART_RXD", /* GPIO_45 */
+		"BT_UART_TXD", /* GPIO_46 */
+		"BT_UART_RTS", /* GPIO_47 */
+		"BT_UART_CTS", /* GPIO_48 */
+		"UIM2_DATA", /* GPIO_49 */
+		"UIM2_CLK", /* GPIO_50 */
+		"UIM2_RST", /* GPIO_51 */
+		"NC",
+		"SPI_MOSI", /* GPIO_53 */
+		"SPI_MISO", /* GPIO_54 */
+		"SPI_CS_N", /* GPIO_55 */
+		"SPI_CLK", /* GPIO_56 */
+		"TOUCH EXT CLK", /* GPIO_57 */
+		"IHF_I2S_SCKL", /* GPIO_58 */
+		"IHF_I2S_WS", /* GPIO_59 */
+		"IHF_I2S_DIN_L", /* GPIO_60 */
+		"NC",
+		"IHF_I2S_DOUT", /* GPIO_62 */
+		"NC",
+		"ACCEL_GYRO_INT", /* GPIO_64 */
+		"FM_I2S_CLK", /* GPIO_65 */
+		"FM_I2S_SYNC", /* GPIO_66 */
+		"FM_I2S_DATA", /* GPIO_67 */
+		"CODEC_RESET_N", /* GPIO_68 */
+		"NC",
+		"SLIMBUS_CDC_CLK", /* GPIO_70 */
+		"SLIMBUS_CDC_DATA", /* GPIO_71 */
+		"CODEC_INT1", /* GPIO_72 */
+		"CODEC_INT2", /* GPIO_73 */
+		"BARO_INT_N", /* GPIO_74 */
+		"HAL_SWITCH_2", /* GPIO_75 */
+		"NC",
+		"TOUCH_INT_N", /* GPIO_77 */
+		"DISPLAY_RESET_N", /* GPIO_78 */
+		"BT_PCM_CLK", /* GPIO_79 */
+		"BT_PCM_SYNC", /* GPIO_80 */
+		"BT_PCM_DOUT", /* GPIO_81 */
+		"BT_PCM_DIN", /* GPIO_82 */
+		"APPS_I2C_DATA", /* GPIO_83 */
+		"APPS_I2C_CLK", /* GPIO_84 */
+		"NC",
+		"NC",
+		"NC",
+		"NC",
+		"NC",
+		"NC",
+		"CAM_UKNW0", /* GPIO_91 */
+		"CAM_UKNW1", /* GPIO_92 */
+		"FM_RESET_N", /* GPIO_93 */
+		"NFC_DWL_REQ", /* GPIO_94 */
+		"PD_INT_N", /* GPIO_95 */
+		"GRIP_INT_N", /* GPIO_96 */
+		"UIM1_DATA", /* GPIO_97 */
+		"UIM1_CLK", /* GPIO_98 */
+		"UIM1_RST", /* GPIO_99 */
+		"NC",
+		"BUA_PMI8994", /* GPIO_101 */
+		"IRIS_CAM_RES_N", /* GPIO_102 */
+		"NC",
+		"XSHUTDOWN", /* GPIO_104 */
+		"CAM_UKNW3", /* GPIO_105 */
+		"CAM_UKNW4", /* GPIO_106 */
+		"NC",
+		"NC",
+		"NC",
+		"NC",
+		"NC",
+		"NC",
+		"WLAN_EN", /* GPIO_113 */
+		"NC",
+		"GRFC_0", /* GPIO_115 */
+		"GRFC_1", /* GPIO_116 */
+		"GRFC_2", /* GPIO_117 */
+		"GRFC_3", /* GPIO_118 */
+		"NC",
+		"NC",
+		"BOM_DET_0", /* GPIO_121 */
+		"NC",
+		"NC",
+		"NC",
+		"RF_PA_ON/GRFC_10", /* GPIO_125 */
+		"NC",
+		"NC",
+		"NC",
+		"EXT_GPS_LNA_EN", /* GPIO_129 */
+		"GPS_TX_AGGRESSOR", /* GPIO_130 */
+		"GSM_TX1_PHASE_D0", /* GPIO_131 */
+		"NC",
+		"GRFC_15", /* GPIO_133 */
+		"LTE_SYNC", /* GPIO_134 */
+		"LTE_PRI", /* GPIO_135 */
+		"RFFE1_CLK", /* GPIO_136 */
+		"RFFE1_DATA", /* GPIO_137 */
+		"RFFE2_CLK", /* GPIO_138 */
+		"RFFE2_DATA", /* GPIO_139 */
+		"RFFE3_CLK", /* GPIO_140 */
+		"RFFE3_DATA"; /* GPIO_141 */
+
 	touch_pins: touch {
 		irq {
 			pins = "gpio77";

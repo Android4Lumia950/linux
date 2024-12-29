@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-/*
- * Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  */
 
 #include "msm8994.dtsi"
@@ -23,6 +22,15 @@
 			       <1020000000>,
 			       <960000000>,
 			       <800000000>;
+};
+
+&gpu {
+	/*
+	 * note: the amd,imageon compatible makes it possible
+	 * to use the drm/msm driver without the display node,
+	 * make sure to remove it when display node is added
+	 */
+	compatible = "qcom,adreno-418.0", "qcom,adreno", "amd,imageon";
 };
 
 &ocmem {
