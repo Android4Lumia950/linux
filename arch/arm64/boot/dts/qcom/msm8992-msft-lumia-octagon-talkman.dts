@@ -20,5 +20,54 @@
 };
 
 &mss_pil {
+	status = "okay";
+	pll-supply = <&vreg_l12a_1p8>;
 	firmware-name = "qcom/msft/talkman/qcdsp1v28992.mbn", "qcom/msft/talkman/qcdsp28992.mbn";
+};
+
+/*
+ * Talkman is different than cityman,
+ * however they still put the addresses in common smh
+*/
+
+&tz_mem {
+	reg = <0 0x06d00000 0 0x200000>;
+};
+
+&rfsa_mpss_mem {
+	reg = <0 0x07090000 0 0x10000>;
+};
+
+/*
+ * Value obtained from the device original ACPI DSDT table
+ * ADSP_EFS
+ */
+&rfsa_adsp_mem {
+	reg = <0 0x07080000 0 0x10000>;
+};
+
+&mba_mem {
+	reg = <0 0x06f00000 0 0x180000>;
+};
+
+&mpss_mem {
+	reg = <0 0x07400000 0 0x5a00000>;
+};
+
+&adsp_mem {
+	reg = <0 0x0ce00000 0 0x1800000>;
+};
+
+&venus_mem {
+	reg = <0 0x0e600000 0 0x500000>;
+};
+
+&pil_metadata_mem {
+	reg = <0 0x0eb00000 0 0x400000>;
+};
+
+
+&dsi0 {
+	status = "okay";
+
 };

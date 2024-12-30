@@ -770,6 +770,11 @@
 			resets = <&gcc MSS_RESET>;
 			reset-names = "mss_restart";
 
+			qcom,halt-regs = <&tcsr_mutex 0x1180 0x1200 0x1280>;
+
+			qcom,smem-states = <&modem_smp2p_out 0>;
+			qcom,smem-state-names = "stop";
+
 			power-domains =	<&rpmpd MSM8994_VDDCX>,
 					<&rpmpd MSM8994_VDDMX>;
 			power-domain-names = "cx", "mx";
@@ -782,11 +787,6 @@
 			 * };
 			 */
 
-			qcom,halt-regs = <&tcsr_mutex 0x1180 0x1200 0x1280>;
-
-			qcom,smem-states = <&modem_smp2p_out 0>;
-			qcom,smem-state-names = "stop";
-
 			mba {
 				memory-region = <&mba_mem>;
 			};
@@ -798,7 +798,7 @@
 			smd-edge {
 				interrupts = <GIC_SPI 25 IRQ_TYPE_EDGE_RISING>;
 
-				qcom,ipc = <&apcs 8 12>;
+				qcom,ipc = <&apcs 12>;
 				qcom,smd-edge = <0>;
 
 				label = "modem";
@@ -811,9 +811,9 @@
 			 * to use the drm/msm driver without the display node,
 			 * make sure to remove it when display node is added
 			 */
-			compatible = "qcom,adreno-430.0", "qcom,adreno", "amd,imageon";
+			compatible = "qcom,adreno-430.0", "qcom,adreno";
 			reg = <0xfdb00000 0x40000>;
-			status = "disabled";
+			//status = "disabled";
 			reg-names = "kgsl_3d0_reg_memory";
 			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "kgsl_3d0_irq";
@@ -901,7 +901,7 @@
 		};
 
 		tcsr_mutex: hwlock@fd484000 {
-			compatible = "qcom,msm8994-tcsr-mutex", "qcom,tcsr-mutex";
+			compatible = "qcom,msm8994-tcsr-mutex", "qcom,tcsr-mutex", "syscon";
 			reg = <0xfd484000 0x1000>;
 			#hwlock-cells = <1>;
 		};
@@ -1234,7 +1234,7 @@
 			ranges;
 
 			mdp: mdp@fd901000 {
-				compatible = "qcom,mdp5";
+				compatible = "qcom,msm8994-mdp5", "qcom,mdp5";
 				reg = <0xfd901000 0x89000>;
 				reg-names = "mdp_phys";
 
@@ -1283,7 +1283,8 @@
 			};
 
 			dsi0: dsi@fd998000 {
-				compatible = "qcom,mdss-dsi-ctrl";
+				compatible = "qcom,msm8994-dsi-ctrl",
+				"qcom,mdss-dsi-ctrl";
 				reg = <0xfd998000 0x25c>;
 				reg-names = "dsi_ctrl";
 
@@ -1300,13 +1301,15 @@
 					 <&mmcc MDSS_AXI_CLK>,
 					 <&mmcc MDSS_BYTE0_CLK>,
 					 <&mmcc MDSS_PCLK0_CLK>,
-					 <&mmcc MDSS_ESC0_CLK>;
+					 <&mmcc MDSS_ESC0_CLK>,
+					 <&mmcc MMSS_MISC_AHB_CLK>;
 				clock-names = "mdp_core",
 					      "iface",
 					      "bus",
 					      "byte",
 					      "pixel",
-					      "core";
+					      "core",
+					      "core_mmss";
 				phys = <&dsi0_phy>;
 				phy-names = "dsi-phy";
 

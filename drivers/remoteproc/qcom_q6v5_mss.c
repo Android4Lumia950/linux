@@ -250,6 +250,7 @@ enum {
 	MSS_MSM8916,
 	MSS_MSM8953,
 	MSS_MSM8974,
+	MSS_MSM8994,
 	MSS_MSM8996,
 	MSS_MSM8998,
 	MSS_SC7180,
@@ -700,6 +701,7 @@ static int q6v5proc_reset(struct q6v5 *qproc)
 		goto pbl_wait;
 	} else if (qproc->version == MSS_MSM8909 ||
 		   qproc->version == MSS_MSM8953 ||
+		   qproc->version == MSS_MSM8994 ||
 		   qproc->version == MSS_MSM8996 ||
 		   qproc->version == MSS_MSM8998 ||
 		   qproc->version == MSS_SDM660) {
@@ -764,7 +766,8 @@ static int q6v5proc_reset(struct q6v5 *qproc)
 
 			/* Turn on L1, L2, ETB and JU memories 1 at a time */
 			if (qproc->version == MSS_MSM8953 ||
-			    qproc->version == MSS_MSM8996) {
+			    qproc->version == MSS_MSM8994 ||
+				qproc->version == MSS_MSM8996 ) {
 				mem_pwr_ctl = QDSP6SS_MEM_PWR_CTL;
 				i = 19;
 			} else {
@@ -2076,6 +2079,8 @@ static int q6v5_probe(struct platform_device *pdev)
 
 	ret = qcom_q6v5_init(&qproc->q6v5, pdev, rproc, MPSS_CRASH_REASON_SMEM, "modem",
 			     qcom_msa_handover);
+
+	dev_err(&pdev->dev, "Spaghet\n");
 	if (ret)
 		goto detach_proxy_pds;
 
@@ -2086,19 +2091,21 @@ static int q6v5_probe(struct platform_device *pdev)
 	qcom_add_pdm_subdev(rproc, &qproc->pdm_subdev);
 	qcom_add_ssr_subdev(rproc, &qproc->ssr_subdev, "mpss");
 	qproc->sysmon = qcom_add_sysmon_subdev(rproc, "modem", 0x12);
+	dev_err(&pdev->dev, "Spaghett\n");
 	if (IS_ERR(qproc->sysmon)) {
 		ret = PTR_ERR(qproc->sysmon);
 		goto remove_subdevs;
 	}
 
 	ret = rproc_add(rproc);
+	dev_err(&pdev->dev, "Spagheht\n");
 	if (ret)
 		goto remove_sysmon_subdev;
-
+		dev_err(&pdev->dev, "Spaghetto\n");
 	node = of_get_compatible_child(pdev->dev.of_node, "qcom,bam-dmux");
 	qproc->bam_dmux = of_platform_device_create(node, NULL, &pdev->dev);
 	of_node_put(node);
-
+	dev_err(&pdev->dev, "Spaghetti\n");
 	return 0;
 
 remove_sysmon_subdev:
@@ -2504,48 +2511,30 @@ static const struct rproc_hexagon_res msm8994_mss = {
 		},
 		{}
 	},
-	.fallback_proxy_supply = (struct qcom_mss_reg_res[]) {
-		{
-			.supply = "mx",
-			.uV = 1050000,
-		},
-		{
-			.supply = "cx",
-			.uA = 100000,
-		},
-		{}
-	},
-	.active_supply = (struct qcom_mss_reg_res[]) {
-		{
-			.supply = "mss",
-			.uV = 1050000,
-			.uA = 100000,
-		},
-		{}
-	},
 	.proxy_clk_names = (char*[]){
-		"xo",
-		NULL
+			"xo",
+			NULL
 	},
 	.active_clk_names = (char*[]){
-		"iface",
-		"bus",
-		"mem",
-		NULL
+			"iface",
+			"bus",
+			"mem",
+			"gpll0_mss",
+			NULL
 	},
 	.proxy_pd_names = (char*[]){
-		"mx",
-		"cx",
-		NULL
+			"mx",
+			"cx",
+			NULL
 	},
-	.need_mem_protection = false,
+	.need_mem_protection = true,
 	.has_alt_reset = false,
 	.has_mba_logs = false,
 	.has_spare_reg = false,
 	.has_qaccept_regs = false,
 	.has_ext_cntl_regs = false,
 	.has_vq6 = false,
-	.version = MSS_MSM8974,
+	.version = MSS_MSM8994,
 };
 
 static const struct of_device_id q6v5_of_match[] = {

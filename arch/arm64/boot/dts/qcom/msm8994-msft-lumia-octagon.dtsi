@@ -260,10 +260,10 @@
 			no-map;
 		};
 
-		memory@e704000 {
-			reg = <0 0x0e704000 0 0x7fc000>;
-			no-map;
-		};
+		//memory@e704000 {
+		//	reg = <0 0x0e704000 0 0x7fc000>;
+		//	no-map;
+		//};
 		/* Peripheral Image loader region end */
 
 		cnss_mem: memory@ef00000 {
@@ -579,13 +579,18 @@
 
 &blsp2_uart2 {
 	status = "okay";
-	uart-has-rtscts;
+	
 	qca6174_bt: bluetooth {
 		compatible = "qcom,qca6174-bt";
 		pinctrl-names = "default";
 		pinctrl-0 = <&bt_en_gpios>;
+
 		enable-gpios = <&pm8994_gpios 19 GPIO_ACTIVE_HIGH>;
+		vddio-supply = <&vreg_s4a_1p8>;
 		clocks = <&divclk4>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <19 IRQ_TYPE_EDGE_RISING>;
+		qcom,local-bd-address-broken;
 	};
 };
 
@@ -1235,5 +1240,33 @@
 		function = "gpio";
 		drive-strength = <2>;
 		bias-disable;
+	};
+
+	mdss_dsi_default: mdss-dsi-default-state {
+		pins = "gpio78";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	mdss_dsi_sleep: mdss-dsi-sleep-state {
+		pins = "gpio78";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	mdss_te_default: mdss-te-default-state {
+		pins = "gpio10";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	mdss_te_sleep: mdss-te-sleep-state {
+		pins = "gpio10";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
 	};
 };
