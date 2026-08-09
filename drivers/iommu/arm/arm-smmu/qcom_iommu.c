@@ -61,6 +61,11 @@ struct qcom_iommu_ctx {
 	bool			 secured_ctx;
 	u8			 asid;      /* asid and ctx bank # are 1:1 */
 	struct iommu_domain	*domain;
+	/* programmed context bank state */
+	u64			 ttbr0;
+	u32			 tcr[2];
+	u32			 mair[2];
+	u32			 sctlr;
 };
 
 struct qcom_iommu_domain {
@@ -213,6 +218,32 @@ static irqreturn_t qcom_iommu_fault(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+static void qcom_iommu_program_ctx(struct qcom_iommu_dev *qcom_iommu,
+				   struct qcom_iommu_ctx *ctx)
+{
+	/* Disable context bank before programming */
+	iommu_writel(ctx, ARM_SMMU_CB_SCTLR, 0);
+
+	/* Clear context bank fault address fault status registers */
+	iommu_writel(ctx, ARM_SMMU_CB_FAR, 0);
+	iommu_writel(ctx, ARM_SMMU_CB_FSR, ARM_SMMU_CB_FSR_FAULT);
+
+	/* TTBRs */
+	iommu_writeq(ctx, ARM_SMMU_CB_TTBR0, ctx->ttbr0);
+	iommu_writeq(ctx, ARM_SMMU_CB_TTBR1, 0);
+
+	/* TCR */
+	iommu_writel(ctx, ARM_SMMU_CB_TCR2, ctx->tcr[1]);
+	iommu_writel(ctx, ARM_SMMU_CB_TCR, ctx->tcr[0]);
+
+	/* MAIRs (stage-1 only) */
+	iommu_writel(ctx, ARM_SMMU_CB_S1_MAIR0, ctx->mair[0]);
+	iommu_writel(ctx, ARM_SMMU_CB_S1_MAIR1, ctx->mair[1]);
+
+	/* SCTLR */
+	iommu_writel(ctx, ARM_SMMU_CB_SCTLR, ctx->sctlr);
+}
+
 static int qcom_iommu_init_domain(struct iommu_domain *domain,
 				  struct qcom_iommu_dev *qcom_iommu,
 				  struct device *dev)
@@ -267,32 +298,13 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 			continue;
 		}
 
-		/* Disable context bank before programming */
-		iommu_writel(ctx, ARM_SMMU_CB_SCTLR, 0);
+		ctx->ttbr0 = pgtbl_cfg.arm_lpae_s1_cfg.ttbr |
+			     FIELD_PREP(ARM_SMMU_TTBRn_ASID, ctx->asid);
+		ctx->tcr[0] = arm_smmu_lpae_tcr(&pgtbl_cfg) | ARM_SMMU_TCR_EAE;
+		ctx->tcr[1] = arm_smmu_lpae_tcr2(&pgtbl_cfg);
+		ctx->mair[0] = pgtbl_cfg.arm_lpae_s1_cfg.mair;
+		ctx->mair[1] = pgtbl_cfg.arm_lpae_s1_cfg.mair >> 32;
 
-		/* Clear context bank fault address fault status registers */
-		iommu_writel(ctx, ARM_SMMU_CB_FAR, 0);
-		iommu_writel(ctx, ARM_SMMU_CB_FSR, ARM_SMMU_CB_FSR_FAULT);
-
-		/* TTBRs */
-		iommu_writeq(ctx, ARM_SMMU_CB_TTBR0,
-				pgtbl_cfg.arm_lpae_s1_cfg.ttbr |
-				FIELD_PREP(ARM_SMMU_TTBRn_ASID, ctx->asid));
-		iommu_writeq(ctx, ARM_SMMU_CB_TTBR1, 0);
-
-		/* TCR */
-		iommu_writel(ctx, ARM_SMMU_CB_TCR2,
-				arm_smmu_lpae_tcr2(&pgtbl_cfg));
-		iommu_writel(ctx, ARM_SMMU_CB_TCR,
-			     arm_smmu_lpae_tcr(&pgtbl_cfg) | ARM_SMMU_TCR_EAE);
-
-		/* MAIRs (stage-1 only) */
-		iommu_writel(ctx, ARM_SMMU_CB_S1_MAIR0,
-				pgtbl_cfg.arm_lpae_s1_cfg.mair);
-		iommu_writel(ctx, ARM_SMMU_CB_S1_MAIR1,
-				pgtbl_cfg.arm_lpae_s1_cfg.mair >> 32);
-
-		/* SCTLR */
 		reg = ARM_SMMU_SCTLR_CFIE | ARM_SMMU_SCTLR_CFRE |
 		      ARM_SMMU_SCTLR_AFE | ARM_SMMU_SCTLR_TRE |
 		      ARM_SMMU_SCTLR_M | ARM_SMMU_SCTLR_S1_ASIDPNE |
@@ -301,7 +313,9 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 		if (IS_ENABLED(CONFIG_CPU_BIG_ENDIAN))
 			reg |= ARM_SMMU_SCTLR_E;
 
-		iommu_writel(ctx, ARM_SMMU_CB_SCTLR, reg);
+		ctx->sctlr = reg;
+
+		qcom_iommu_program_ctx(qcom_iommu, ctx);
 
 		ctx->domain = domain;
 	}
