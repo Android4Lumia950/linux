@@ -76,6 +76,8 @@ struct qcom_iommu_cfg {
 	bool				 ctx_restore;
 	/* the micro-MMU must be halted while its registers are programmed */
 	bool				 halt;
+	/* faulting transactions must terminate rather than stall */
+	bool				 no_stall;
 	const struct qcom_iommu_sid	*sids;	/* one SMR slot per entry */
 	unsigned int			 num_sids;
 };
@@ -499,6 +501,9 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 
 		if (qcom_iommu->cfg && qcom_iommu->cfg->no_afe)
 			reg &= ~ARM_SMMU_SCTLR_AFE;
+
+		if (qcom_iommu->cfg && qcom_iommu->cfg->no_stall)
+			reg &= ~ARM_SMMU_SCTLR_CFCFG;
 
 		ctx->sctlr = reg;
 
