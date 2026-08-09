@@ -64,6 +64,8 @@ struct qcom_iommu_cfg {
 	enum io_pgtable_fmt		 fmt;
 	/* the walker faults on the AF bit despite it being set */
 	bool				 no_afe;
+	/* context banks lose their state over GDSC power collapse */
+	bool				 ctx_restore;
 	const struct qcom_iommu_sid	*sids;	/* one SMR slot per entry */
 	unsigned int			 num_sids;
 };
@@ -94,7 +96,7 @@ struct qcom_iommu_ctx {
 	bool			 secured_ctx;
 	u8			 asid;      /* asid and ctx bank # are 1:1 */
 	struct iommu_domain	*domain;
-	/* programmed context bank state */
+	/* CB state replayed after power collapse on OS-managed instances */
 	u64			 ttbr0;
 	u32			 tcr[2];
 	u32			 mair[2];
@@ -1063,6 +1065,7 @@ static void qcom_iommu_device_remove(struct platform_device *pdev)
 static int __maybe_unused qcom_iommu_resume(struct device *dev)
 {
 	struct qcom_iommu_dev *qcom_iommu = dev_get_drvdata(dev);
+	unsigned int i;
 	int ret;
 
 	ret = clk_bulk_prepare_enable(CLK_NUM, qcom_iommu->clks);
@@ -1077,6 +1080,16 @@ static int __maybe_unused qcom_iommu_resume(struct device *dev)
 		ret = qcom_scm_restore_sec_cfg(qcom_iommu->sec_id, 0);
 		if (ret)
 			return ret;
+	}
+
+	if (qcom_iommu->cfg && qcom_iommu->cfg->ctx_restore) {
+		/* Restore context banks lost over power collapse */
+		for (i = 0; i <= qcom_iommu->max_asid; i++) {
+			struct qcom_iommu_ctx *ctx = qcom_iommu->ctxs[i];
+
+			if (ctx && ctx->domain && !ctx->secured_ctx)
+				qcom_iommu_program_ctx(qcom_iommu, ctx);
+		}
 	}
 
 	return ret;
