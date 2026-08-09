@@ -37,6 +37,14 @@
 /* GR1 sits one 4K page above GR0 on the msm8974 QSMMU */
 #define QCOM_IOMMU_GR1			0x1000
 
+/* The implementation-defined space sits two 4K pages above GR0 */
+#define QCOM_IOMMU_IMPL_DEF		0x2000
+
+/* Micro-MMU control, at the start of the implementation-defined space */
+#define QCOM_IOMMU_MICRO_MMU_CTRL	(QCOM_IOMMU_IMPL_DEF + 0x000)
+#define MICRO_MMU_CTRL_HALT_REQ		BIT(2)
+#define MICRO_MMU_CTRL_IDLE		BIT(3)
+
 /* Redirect all cacheable requests to the L2 slave port */
 #define QCOM_IOMMU_ACTLR_BPRC		(BIT(28) | BIT(29) | BIT(30))
 
@@ -66,6 +74,8 @@ struct qcom_iommu_cfg {
 	bool				 no_afe;
 	/* context banks lose their state over GDSC power collapse */
 	bool				 ctx_restore;
+	/* the micro-MMU must be halted while its registers are programmed */
+	bool				 halt;
 	const struct qcom_iommu_sid	*sids;	/* one SMR slot per entry */
 	unsigned int			 num_sids;
 };
@@ -339,9 +349,41 @@ static int qcom_iommu_reset_ns(struct qcom_iommu_dev *qcom_iommu)
 	return 0;
 }
 
+/*
+ * Halting the micro-MMU quiesces the translation front-end: it stops new
+ * client transactions being accepted and waits for the outstanding ones to
+ * retire, so that the context bank registers can be reprogrammed without
+ * in-flight traffic racing the change.
+ */
+static void qcom_iommu_halt(struct qcom_iommu_dev *qcom_iommu)
+{
+	void __iomem *reg = qcom_iommu->global_base + QCOM_IOMMU_MICRO_MMU_CTRL;
+	u32 val;
+
+	if (!qcom_iommu->cfg || !qcom_iommu->cfg->halt)
+		return;
+
+	writel_relaxed(readl_relaxed(reg) | MICRO_MMU_CTRL_HALT_REQ, reg);
+
+	if (readl_poll_timeout(reg, val, val & MICRO_MMU_CTRL_IDLE, 0, 100000))
+		dev_err(qcom_iommu->dev, "timeout waiting for micro-MMU halt\n");
+}
+
+static void qcom_iommu_unhalt(struct qcom_iommu_dev *qcom_iommu)
+{
+	void __iomem *reg = qcom_iommu->global_base + QCOM_IOMMU_MICRO_MMU_CTRL;
+
+	if (!qcom_iommu->cfg || !qcom_iommu->cfg->halt)
+		return;
+
+	writel_relaxed(readl_relaxed(reg) & ~MICRO_MMU_CTRL_HALT_REQ, reg);
+}
+
 static void qcom_iommu_program_ctx(struct qcom_iommu_dev *qcom_iommu,
 				   struct qcom_iommu_ctx *ctx)
 {
+	qcom_iommu_halt(qcom_iommu);
+
 	/* Disable context bank before programming */
 	iommu_writel(ctx, ARM_SMMU_CB_SCTLR, 0);
 
@@ -369,6 +411,8 @@ static void qcom_iommu_program_ctx(struct qcom_iommu_dev *qcom_iommu,
 
 	/* SCTLR */
 	iommu_writel(ctx, ARM_SMMU_CB_SCTLR, ctx->sctlr);
+
+	qcom_iommu_unhalt(qcom_iommu);
 }
 
 static int qcom_iommu_init_domain(struct iommu_domain *domain,
