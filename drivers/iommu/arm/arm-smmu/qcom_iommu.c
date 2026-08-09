@@ -34,6 +34,9 @@
 
 #define SMMU_INTR_SEL_NS     0x2000
 
+/* GR1 sits one 4K page above GR0 on the msm8974 QSMMU */
+#define QCOM_IOMMU_GR1			0x1000
+
 enum qcom_iommu_clk {
 	CLK_IFACE,
 	CLK_BUS,
@@ -57,6 +60,7 @@ struct qcom_iommu_dev {
 	const struct qcom_iommu_cfg *cfg;
 	struct clk_bulk_data clks[CLK_NUM];
 	void __iomem		*local_base;
+	void __iomem		*global_base;
 	u32			 sec_id;
 	u8			 max_asid;
 	struct qcom_iommu_ctx	*ctxs[];   /* indexed by asid */
@@ -128,6 +132,26 @@ static inline u64
 iommu_readq(struct qcom_iommu_ctx *ctx, unsigned reg)
 {
 	return readq_relaxed(ctx->base + reg);
+}
+
+static inline void
+qcom_iommu_gr0_write(struct qcom_iommu_dev *qcom_iommu, unsigned int reg,
+		      u32 val)
+{
+	writel_relaxed(val, qcom_iommu->global_base + reg);
+}
+
+static inline u32
+qcom_iommu_gr0_read(struct qcom_iommu_dev *qcom_iommu, unsigned int reg)
+{
+	return readl_relaxed(qcom_iommu->global_base + reg);
+}
+
+static inline void
+qcom_iommu_gr1_write(struct qcom_iommu_dev *qcom_iommu, unsigned int reg,
+		      u32 val)
+{
+	writel_relaxed(val, qcom_iommu->global_base + QCOM_IOMMU_GR1 + reg);
 }
 
 static void qcom_iommu_tlb_sync(void *cookie)
@@ -749,9 +773,10 @@ static int qcom_iommu_ctx_probe(struct platform_device *pdev)
 		ctx->secured_ctx = true;
 
 	/* clear IRQs before registering fault handler, just in case the
-	 * boot-loader left us a surprise:
+	 * boot-loader left us a surprise.  Instances with a power domain
+	 * may not be accessible yet; they are reset at first resume.
 	 */
-	if (!ctx->secured_ctx) {
+	if (!ctx->secured_ctx && !qcom_iommu->cfg) {
 		ret = pm_runtime_resume_and_get(dev->parent);
 		if (ret)
 			return ret;
@@ -845,9 +870,18 @@ static int qcom_iommu_device_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res) {
-		qcom_iommu->local_base = devm_ioremap_resource(dev, res);
-		if (IS_ERR(qcom_iommu->local_base))
-			return PTR_ERR(qcom_iommu->local_base);
+		if (qcom_iommu->cfg) {
+			qcom_iommu->global_base = devm_ioremap_resource(dev, res);
+			if (IS_ERR(qcom_iommu->global_base))
+				return PTR_ERR(qcom_iommu->global_base);
+		} else {
+			qcom_iommu->local_base = devm_ioremap_resource(dev, res);
+			if (IS_ERR(qcom_iommu->local_base))
+				return PTR_ERR(qcom_iommu->local_base);
+		}
+	} else if (qcom_iommu->cfg) {
+		return dev_err_probe(dev, -EINVAL,
+				     "missing global register space\n");
 	}
 
 	clk = devm_clk_get(dev, "iface");
