@@ -26,17 +26,21 @@
 /* Configuration registers */
 #define ARM_SMMU_GR0_sCR0		0x0
 #define ARM_SMMU_sCR0_VMID16EN		BIT(31)
+#define ARM_SMMU_sCR0_SMCFCFG		BIT(21)
 #define ARM_SMMU_sCR0_BSU		GENMASK(15, 14)
 #define ARM_SMMU_sCR0_FB		BIT(13)
 #define ARM_SMMU_sCR0_PTM		BIT(12)
 #define ARM_SMMU_sCR0_VMIDPNE		BIT(11)
 #define ARM_SMMU_sCR0_USFCFG		BIT(10)
+#define ARM_SMMU_sCR0_STALLD		BIT(8)
 #define ARM_SMMU_sCR0_GCFGFIE		BIT(5)
 #define ARM_SMMU_sCR0_GCFGFRE		BIT(4)
 #define ARM_SMMU_sCR0_EXIDENABLE	BIT(3)
 #define ARM_SMMU_sCR0_GFIE		BIT(2)
 #define ARM_SMMU_sCR0_GFRE		BIT(1)
 #define ARM_SMMU_sCR0_CLIENTPD		BIT(0)
+
+#define ARM_SMMU_GR0_sCR2		0x8
 
 /* Auxiliary Configuration register */
 #define ARM_SMMU_GR0_sACR		0x10
@@ -80,8 +84,12 @@
 #define ARM_SMMU_ID7_MAJOR		GENMASK(7, 4)
 #define ARM_SMMU_ID7_MINOR		GENMASK(3, 0)
 
+#define ARM_SMMU_GR0_sGFAR		0x40
+
 #define ARM_SMMU_GR0_sGFSR		0x48
 #define ARM_SMMU_sGFSR_USF		BIT(1)
+
+#define ARM_SMMU_GR0_sGFSRRESTORE	0x4c
 
 #define ARM_SMMU_GR0_sGFSYNR0		0x50
 #define ARM_SMMU_GR0_sGFSYNR1		0x54
@@ -110,12 +118,14 @@ enum arm_smmu_s2cr_privcfg {
 	S2CR_PRIVCFG_UNPRIV,
 	S2CR_PRIVCFG_PRIV,
 };
+#define ARM_SMMU_S2CR_NSCFG		GENMASK(19, 18)
 #define ARM_SMMU_S2CR_TYPE		GENMASK(17, 16)
 enum arm_smmu_s2cr_type {
 	S2CR_TYPE_TRANS,
 	S2CR_TYPE_BYPASS,
 	S2CR_TYPE_FAULT,
 };
+#define ARM_SMMU_S2CR_MEMATTR		GENMASK(15, 12)
 #define ARM_SMMU_S2CR_EXIDVALID		BIT(10)
 #define ARM_SMMU_S2CR_CBNDX		GENMASK(7, 0)
 
