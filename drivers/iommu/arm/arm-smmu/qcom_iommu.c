@@ -37,6 +37,9 @@
 /* GR1 sits one 4K page above GR0 on the msm8974 QSMMU */
 #define QCOM_IOMMU_GR1			0x1000
 
+/* Redirect all cacheable requests to the L2 slave port */
+#define QCOM_IOMMU_ACTLR_BPRC		(BIT(28) | BIT(29) | BIT(30))
+
 enum qcom_iommu_clk {
 	CLK_IFACE,
 	CLK_BUS,
@@ -46,11 +49,23 @@ enum qcom_iommu_clk {
 
 struct qcom_iommu_ctx;
 
-/* Per-instance configuration, absent on msm8916-style instances */
+struct qcom_iommu_sid {
+	u8			 cbndx;
+	u8			 sid;
+};
+
+/*
+ * Per-instance configuration for instances whose global register space
+ * is at least partially OS-managed (reg points at the global space and
+ * SMMU_INTR_SEL_NS must not be written). The stream ID map is only used
+ * on non-secured instances.
+ */
 struct qcom_iommu_cfg {
 	enum io_pgtable_fmt		 fmt;
 	/* the walker faults on the AF bit despite it being set */
 	bool				 no_afe;
+	const struct qcom_iommu_sid	*sids;	/* one SMR slot per entry */
+	unsigned int			 num_sids;
 };
 
 struct qcom_iommu_dev {
@@ -62,6 +77,7 @@ struct qcom_iommu_dev {
 	void __iomem		*local_base;
 	void __iomem		*global_base;
 	u32			 sec_id;
+	bool			 non_secure;
 	u8			 max_asid;
 	struct qcom_iommu_ctx	*ctxs[];   /* indexed by asid */
 };
@@ -256,6 +272,71 @@ static irqreturn_t qcom_iommu_fault(int irq, void *dev)
 	return IRQ_HANDLED;
 }
 
+/*
+ * Reset and configure the global register space of an instance the
+ * secure world does not manage: global fault state, TLB, stream
+ * mapping (SMR/S2CR/CBAR) and the global configuration register.
+ */
+static int qcom_iommu_reset_ns(struct qcom_iommu_dev *qcom_iommu)
+{
+	const struct qcom_iommu_cfg *cfg = qcom_iommu->cfg;
+	unsigned int i, num_smr;
+	u32 reg;
+	int ret;
+
+	qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_sACR, 0);
+	qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_sCR2, 0);
+	qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_sGFAR, 0);
+	qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_sGFAR + 4, 0);
+	qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_sGFSRRESTORE, 0);
+
+	qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_TLBIALLNSNH, 0);
+	qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_sTLBGSYNC, 0);
+	ret = read_poll_timeout(qcom_iommu_gr0_read, reg,
+				!(reg & ARM_SMMU_sTLBGSTATUS_GSACTIVE),
+				0, 5000000, false,
+				qcom_iommu, ARM_SMMU_GR0_sTLBGSTATUS);
+	if (ret) {
+		dev_err(qcom_iommu->dev,
+			"timeout waiting for global TLB SYNC\n");
+		return ret;
+	}
+
+	num_smr = FIELD_GET(ARM_SMMU_ID0_NUMSMRG,
+			    qcom_iommu_gr0_read(qcom_iommu, ARM_SMMU_GR0_ID0));
+	for (i = 0; i < num_smr; i++)
+		qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_SMR(i), 0);
+
+	for (i = 0; i < cfg->num_sids; i++) {
+		const struct qcom_iommu_sid *sid = &cfg->sids[i];
+
+		qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_SMR(i),
+				      ARM_SMMU_SMR_VALID |
+				      FIELD_PREP(ARM_SMMU_SMR_ID, sid->sid));
+		qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_S2CR(i),
+				      FIELD_PREP(ARM_SMMU_S2CR_TYPE, S2CR_TYPE_TRANS) |
+				      FIELD_PREP(ARM_SMMU_S2CR_CBNDX, sid->cbndx) |
+				      FIELD_PREP(ARM_SMMU_S2CR_MEMATTR, 0xa) |
+				      FIELD_PREP(ARM_SMMU_S2CR_NSCFG, 3));
+		qcom_iommu_gr1_write(qcom_iommu,
+				      ARM_SMMU_GR1_CBAR(sid->cbndx),
+				      FIELD_PREP(ARM_SMMU_CBAR_TYPE,
+						 CBAR_TYPE_S1_TRANS_S2_BYPASS) |
+				      FIELD_PREP(ARM_SMMU_CBAR_IRPTNDX, 1) |
+				      FIELD_PREP(ARM_SMMU_CBAR_VMID, 3) |
+				      FIELD_PREP(ARM_SMMU_CBAR_S1_BPSHCFG, 2) |
+				      FIELD_PREP(ARM_SMMU_CBAR_S1_MEMATTR, 0xa));
+	}
+
+	qcom_iommu_gr0_write(qcom_iommu, ARM_SMMU_GR0_sCR0,
+			      ARM_SMMU_sCR0_SMCFCFG | ARM_SMMU_sCR0_USFCFG |
+			      ARM_SMMU_sCR0_STALLD | ARM_SMMU_sCR0_GCFGFIE |
+			      ARM_SMMU_sCR0_GCFGFRE | ARM_SMMU_sCR0_GFIE |
+			      ARM_SMMU_sCR0_GFRE);
+
+	return 0;
+}
+
 static void qcom_iommu_program_ctx(struct qcom_iommu_dev *qcom_iommu,
 				   struct qcom_iommu_ctx *ctx)
 {
@@ -265,6 +346,9 @@ static void qcom_iommu_program_ctx(struct qcom_iommu_dev *qcom_iommu,
 	/* Clear context bank fault address fault status registers */
 	iommu_writel(ctx, ARM_SMMU_CB_FAR, 0);
 	iommu_writel(ctx, ARM_SMMU_CB_FSR, ARM_SMMU_CB_FSR_FAULT);
+
+	if (qcom_iommu->cfg)
+		iommu_writel(ctx, ARM_SMMU_CB_ACTLR, QCOM_IOMMU_ACTLR_BPRC);
 
 	/* TTBRs */
 	iommu_writeq(ctx, ARM_SMMU_CB_TTBR0, ctx->ttbr0);
@@ -327,7 +411,7 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 	for (i = 0; i < fwspec->num_ids; i++) {
 		struct qcom_iommu_ctx *ctx = to_ctx(qcom_domain, fwspec->ids[i]);
 
-		if (!ctx->secure_init) {
+		if (!qcom_iommu->non_secure && !ctx->secure_init) {
 			ret = qcom_scm_restore_sec_cfg(qcom_iommu->sec_id, ctx->asid);
 			if (ret) {
 				dev_err(qcom_iommu->dev, "secure init failed: %d\n", ret);
@@ -907,8 +991,12 @@ static int qcom_iommu_device_probe(struct platform_device *pdev)
 
 	if (of_property_read_u32(dev->of_node, "qcom,iommu-secure-id",
 				 &qcom_iommu->sec_id)) {
-		dev_err(dev, "missing qcom,iommu-secure-id property\n");
-		return -ENODEV;
+		if (!qcom_iommu->cfg) {
+			dev_err(dev, "missing qcom,iommu-secure-id property\n");
+			return -ENODEV;
+		}
+		/* The secure world does not manage this instance at all */
+		qcom_iommu->non_secure = true;
 	}
 
 	if (qcom_iommu_has_secure_context(qcom_iommu)) {
@@ -981,8 +1069,15 @@ static int __maybe_unused qcom_iommu_resume(struct device *dev)
 	if (ret < 0)
 		return ret;
 
-	if (dev->pm_domain)
-		return qcom_scm_restore_sec_cfg(qcom_iommu->sec_id, 0);
+	if (qcom_iommu->non_secure) {
+		ret = qcom_iommu_reset_ns(qcom_iommu);
+		if (ret)
+			return ret;
+	} else if (dev->pm_domain) {
+		ret = qcom_scm_restore_sec_cfg(qcom_iommu->sec_id, 0);
+		if (ret)
+			return ret;
+	}
 
 	return ret;
 }
