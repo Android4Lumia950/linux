@@ -43,16 +43,29 @@ enum qcom_iommu_clk {
 
 struct qcom_iommu_ctx;
 
+/* Per-instance configuration, absent on msm8916-style instances */
+struct qcom_iommu_cfg {
+	enum io_pgtable_fmt		 fmt;
+	/* the walker faults on the AF bit despite it being set */
+	bool				 no_afe;
+};
+
 struct qcom_iommu_dev {
 	/* IOMMU core code handle */
 	struct iommu_device	 iommu;
 	struct device		*dev;
+	const struct qcom_iommu_cfg *cfg;
 	struct clk_bulk_data clks[CLK_NUM];
 	void __iomem		*local_base;
 	u32			 sec_id;
 	u8			 max_asid;
 	struct qcom_iommu_ctx	*ctxs[];   /* indexed by asid */
 };
+
+static enum io_pgtable_fmt qcom_iommu_pgtbl_fmt(struct qcom_iommu_dev *qcom_iommu)
+{
+	return qcom_iommu->cfg ? qcom_iommu->cfg->fmt : ARM_32_LPAE_S1;
+}
 
 struct qcom_iommu_ctx {
 	struct device		*dev;
@@ -65,6 +78,7 @@ struct qcom_iommu_ctx {
 	u64			 ttbr0;
 	u32			 tcr[2];
 	u32			 mair[2];
+	u32			 contextidr;
 	u32			 sctlr;
 };
 
@@ -232,8 +246,11 @@ static void qcom_iommu_program_ctx(struct qcom_iommu_dev *qcom_iommu,
 	iommu_writeq(ctx, ARM_SMMU_CB_TTBR0, ctx->ttbr0);
 	iommu_writeq(ctx, ARM_SMMU_CB_TTBR1, 0);
 
-	/* TCR */
-	iommu_writel(ctx, ARM_SMMU_CB_TCR2, ctx->tcr[1]);
+	/* TCR; the v7s ASID lives in CONTEXTIDR instead of TTBR0 */
+	if (qcom_iommu_pgtbl_fmt(qcom_iommu) == ARM_V7S)
+		iommu_writel(ctx, ARM_SMMU_CB_CONTEXTIDR, ctx->contextidr);
+	else
+		iommu_writel(ctx, ARM_SMMU_CB_TCR2, ctx->tcr[1]);
 	iommu_writel(ctx, ARM_SMMU_CB_TCR, ctx->tcr[0]);
 
 	/* MAIRs (stage-1 only) */
@@ -252,6 +269,7 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct io_pgtable_ops *pgtbl_ops;
 	struct io_pgtable_cfg pgtbl_cfg;
+	enum io_pgtable_fmt fmt;
 	int i, ret = 0;
 	u32 reg;
 
@@ -259,10 +277,12 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 	if (qcom_domain->iommu)
 		goto out_unlock;
 
+	fmt = qcom_iommu_pgtbl_fmt(qcom_iommu);
+
 	pgtbl_cfg = (struct io_pgtable_cfg) {
 		.pgsize_bitmap	= domain->pgsize_bitmap,
 		.ias		= 32,
-		.oas		= 40,
+		.oas		= fmt == ARM_V7S ? 32 : 40,
 		.tlb		= &qcom_flush_ops,
 		.iommu_dev	= qcom_iommu->dev,
 	};
@@ -270,7 +290,7 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 	qcom_domain->iommu = qcom_iommu;
 	qcom_domain->fwspec = fwspec;
 
-	pgtbl_ops = alloc_io_pgtable_ops(ARM_32_LPAE_S1, &pgtbl_cfg, qcom_domain);
+	pgtbl_ops = alloc_io_pgtable_ops(fmt, &pgtbl_cfg, qcom_domain);
 	if (!pgtbl_ops) {
 		dev_err(qcom_iommu->dev, "failed to allocate pagetable ops\n");
 		ret = -ENOMEM;
@@ -298,12 +318,22 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 			continue;
 		}
 
-		ctx->ttbr0 = pgtbl_cfg.arm_lpae_s1_cfg.ttbr |
-			     FIELD_PREP(ARM_SMMU_TTBRn_ASID, ctx->asid);
-		ctx->tcr[0] = arm_smmu_lpae_tcr(&pgtbl_cfg) | ARM_SMMU_TCR_EAE;
-		ctx->tcr[1] = arm_smmu_lpae_tcr2(&pgtbl_cfg);
-		ctx->mair[0] = pgtbl_cfg.arm_lpae_s1_cfg.mair;
-		ctx->mair[1] = pgtbl_cfg.arm_lpae_s1_cfg.mair >> 32;
+		if (fmt == ARM_V7S) {
+			ctx->ttbr0 = pgtbl_cfg.arm_v7s_cfg.ttbr;
+			ctx->tcr[0] = pgtbl_cfg.arm_v7s_cfg.tcr;
+			ctx->tcr[1] = 0;
+			/* PRRR/NMRR share the MAIR0/MAIR1 offsets */
+			ctx->mair[0] = pgtbl_cfg.arm_v7s_cfg.prrr;
+			ctx->mair[1] = pgtbl_cfg.arm_v7s_cfg.nmrr;
+			ctx->contextidr = ctx->asid;
+		} else {
+			ctx->ttbr0 = pgtbl_cfg.arm_lpae_s1_cfg.ttbr |
+				     FIELD_PREP(ARM_SMMU_TTBRn_ASID, ctx->asid);
+			ctx->tcr[0] = arm_smmu_lpae_tcr(&pgtbl_cfg) | ARM_SMMU_TCR_EAE;
+			ctx->tcr[1] = arm_smmu_lpae_tcr2(&pgtbl_cfg);
+			ctx->mair[0] = pgtbl_cfg.arm_lpae_s1_cfg.mair;
+			ctx->mair[1] = pgtbl_cfg.arm_lpae_s1_cfg.mair >> 32;
+		}
 
 		reg = ARM_SMMU_SCTLR_CFIE | ARM_SMMU_SCTLR_CFRE |
 		      ARM_SMMU_SCTLR_AFE | ARM_SMMU_SCTLR_TRE |
@@ -312,6 +342,9 @@ static int qcom_iommu_init_domain(struct iommu_domain *domain,
 
 		if (IS_ENABLED(CONFIG_CPU_BIG_ENDIAN))
 			reg |= ARM_SMMU_SCTLR_E;
+
+		if (qcom_iommu->cfg && qcom_iommu->cfg->no_afe)
+			reg &= ~ARM_SMMU_SCTLR_AFE;
 
 		ctx->sctlr = reg;
 
@@ -808,6 +841,7 @@ static int qcom_iommu_device_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	qcom_iommu->max_asid = max_asid;
 	qcom_iommu->dev = dev;
+	qcom_iommu->cfg = of_device_get_match_data(dev);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res) {
