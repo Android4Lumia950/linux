@@ -2367,6 +2367,7 @@ static struct gdsc mdss_gdsc = {
 	.cxc_count = 2,
 	.pd = {
 		.name = "mdss",
+		.flags = GENPD_FLAG_NO_STAY_ON,
 	},
 	.pwrsts = PWRSTS_OFF_ON,
 };
