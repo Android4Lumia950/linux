@@ -57,6 +57,11 @@ enum qcom_iommu_clk {
 
 struct qcom_iommu_ctx;
 
+struct qcom_iommu_bfb_reg {
+	u32			 offset;
+	u32			 value;
+};
+
 struct qcom_iommu_sid {
 	u8			 cbndx;
 	u8			 sid;
@@ -78,6 +83,8 @@ struct qcom_iommu_cfg {
 	bool				 halt;
 	/* faulting transactions must terminate rather than stall */
 	bool				 no_stall;
+	const struct qcom_iommu_bfb_reg	*bfb;
+	unsigned int			 num_bfb;
 	const struct qcom_iommu_sid	*sids;	/* one SMR slot per entry */
 	unsigned int			 num_sids;
 };
@@ -284,6 +291,25 @@ static irqreturn_t qcom_iommu_fault(int irq, void *dev)
 	iommu_writel(ctx, ARM_SMMU_CB_RESUME, ARM_SMMU_RESUME_TERMINATE);
 
 	return IRQ_HANDLED;
+}
+
+static void qcom_iommu_bfb_setup(struct qcom_iommu_dev *qcom_iommu)
+{
+	const struct qcom_iommu_cfg *cfg = qcom_iommu->cfg;
+	unsigned int i;
+
+	if (!cfg)
+		return;
+
+	/* The BFB registers sit in the implementation-defined space */
+	for (i = 0; i < cfg->num_bfb; i++) {
+		if (WARN_ON_ONCE(cfg->bfb[i].offset >= SZ_4K))
+			continue;
+
+		writel_relaxed(cfg->bfb[i].value,
+			       qcom_iommu->global_base + QCOM_IOMMU_IMPL_DEF +
+			       cfg->bfb[i].offset);
+	}
 }
 
 /*
@@ -1130,6 +1156,8 @@ static int __maybe_unused qcom_iommu_resume(struct device *dev)
 		if (ret)
 			return ret;
 	}
+
+	qcom_iommu_bfb_setup(qcom_iommu);
 
 	if (qcom_iommu->cfg && qcom_iommu->cfg->ctx_restore) {
 		/* Restore context banks lost over power collapse */
