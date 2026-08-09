@@ -30,6 +30,10 @@ properties:
               - qcom,msm8953-iommu
               - qcom,msm8976-iommu
           - const: qcom,msm-iommu-v2
+      - enum:
+          - qcom,msm8974-gpu-iommu
+          - qcom,msm8974-mdp-iommu
+          - qcom,msm8974-venus-iommu
 
   clocks:
     minItems: 2
@@ -50,13 +54,23 @@ properties:
 
   reg:
     maxItems: 1
+    description:
+      For instances using the qcom,msm-iommu-v1/-v2 fallbacks, the
+      optional "SMMU local" register region used for interrupt routing
+      configuration. For instances with per-instance compatibles, the
+      SMMU global register space, used for stream mapping configuration
+      on non-secured instances and for the implementation-defined
+      prefetch registers on all instances.
 
   ranges: true
 
   qcom,iommu-secure-id:
     $ref: /schemas/types.yaml#/definitions/uint32
     description:
-      The SCM secure ID of the IOMMU instance.
+      The SCM secure ID of the IOMMU instance. When absent on instances
+      with per-instance compatibles, the instance is not managed by the
+      secure world and the OS programs the whole global register space
+      (stream mapping included) directly.
 
   '#address-cells':
     const: 1
