@@ -42,3 +42,22 @@
 		};
 	};
 };
+
+&gpu {
+	status = "disabled";
+};
+
+&mdss {
+	status = "disabled";
+};
+
+/*
+ * 3.10 msm8992-iommu.dtsi: MDP SMMU 0xfd9b4000, ctx0 0xfd9bc000.
+ * msm8994.dtsi still has the generic v1 template (0xfd928000 /
+ * 0xfd930000). Parent size 0x2600 so the ctx at +0x8000 is not
+ * claimed twice (-EBUSY). Probe resumes the parent, then ioremaps.
+ */
+&mdp_iommu {
+	reg = <0xfd9b4000 0x2600>;
+	ranges = <0 0xfd9bc000 0x3000>;
+};
