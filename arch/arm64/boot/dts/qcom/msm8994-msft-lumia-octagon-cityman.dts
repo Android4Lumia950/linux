@@ -14,3 +14,42 @@
 	compatible = "microsoft,cityman", "qcom,msm8994";
 	chassis-type = "handset";
 };
+
+&gpu {
+	status = "okay";
+};
+
+&mdss {
+	status = "okay";
+};
+
+&gpu {
+	status = "okay";
+};
+
+&mdss {
+	status = "okay";
+};
+
+&dsi0 {
+	status = "okay";
+
+	vdd-supply = <&vreg_l14a_1p8>;
+	vddio-supply = <&vreg_l12a_1p8>;
+
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&mdss_dsi_default &mdss_te_default>;
+	pinctrl-1 = <&mdss_dsi_sleep &mdss_te_default>;
+};
+
+&dsi0_out {
+	status = "okay";
+
+	data-lanes = <0 1 2 3>;
+};
+
+&dsi0_phy {
+	status = "okay";
+
+	vcca-supply = <&vreg_l28a_1p0>;
+};
