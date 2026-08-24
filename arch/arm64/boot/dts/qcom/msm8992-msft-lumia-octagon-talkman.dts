@@ -13,4 +13,32 @@
 	model = "Microsoft Lumia 950";
 	compatible = "microsoft,talkman", "qcom,msm8992";
 	chassis-type = "handset";
+
+	reserved-memory {
+		/*
+		 * Octagon's ramoops@b0000000 sits in HLOS DRAM without
+		 * no-map. On Talkman, WP BootMgr reuses that window across
+		 * a PS_HOLD reset, so the next Linux boot sees an empty
+		 * /sys/fs/pstore. 0xd9d00000 is 1 MiB immediately below the
+		 * high-bank reserved range that starts at 0xd9e00000 on the
+		 * 3 GiB map. no-map keeps Linux from allocating the pages.
+		 * console-size records printk without an oops. max-reason
+		 * EMERG includes sysrq-b / restart dumps.
+		 *
+		 * Cityman keeps the octagon default.
+		 */
+		/delete-node/ ramoops@b0000000;
+
+		ramoops@d9d00000 {
+			compatible = "ramoops";
+			reg = <0x0 0xd9d00000 0x0 0x100000>;
+			no-map;
+			record-size = <0x20000>;
+			console-size = <0x80000>;
+			pmsg-size = <0x20000>;
+			ecc-size = <0>;
+			mem-type = <1>;
+			max-reason = <3>;
+		};
+	};
 };
