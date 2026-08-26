@@ -121,6 +121,55 @@ static void set_display_intf(struct mdp5_kms *mdp5_kms,
 	spin_unlock_irqrestore(&mdp5_kms->resource_lock, flags);
 }
 
+/*
+ * 3.10 cmd pingpong dest-split (mdss_mdp_ctl_pp_split_display_enable).
+ * Offsets live in mdp5_cfg_hw.pp_split (msm8992_config). Other SoCs
+ * leave split_display_en = 0. Slave INTF is the next DSI (INTF1 → INTF2).
+ */
+static bool mdp5_8992_cmd_dst_split(struct mdp5_kms *mdp5_kms,
+				    struct mdp5_interface *intf)
+{
+	const struct mdp5_cfg_hw *hw;
+	struct mdp5_interface slave = { };
+	u32 lower, cfg;
+
+	if (intf->type != INTF_DSI ||
+	    intf->mode != MDP5_INTF_DSI_MODE_COMMAND)
+		return false;
+
+	hw = mdp5_cfg_get_hw_config(mdp5_kms->cfg);
+	if (!hw || !hw->pp_split.split_display_en)
+		return false;
+	if (intf->num < 1 || intf->num >= 3)
+		return false;
+	if (hw->intf.connect[intf->num + 1] != INTF_DSI)
+		return false;
+
+	slave.num = intf->num + 1;
+	slave.type = INTF_DSI;
+	slave.mode = MDP5_INTF_DSI_MODE_COMMAND;
+	set_display_intf(mdp5_kms, &slave);
+
+	lower = BIT(1);
+	if (intf->num == 2)
+		lower |= BIT(4);
+	else
+		lower |= BIT(8);
+	lower |= BIT(2);
+
+	mdp5_write(mdp5_kms, hw->pp_split.split_display_upper, lower);
+	mdp5_write(mdp5_kms, hw->pp_split.split_display_lower, lower);
+	mdp5_write(mdp5_kms, hw->pp_split.split_display_en, 1);
+
+	cfg = ((u32)slave.num << 20) | BIT(16);
+	mdp5_write(mdp5_kms, hw->pp_split.ppb_cfg, cfg);
+	mdp5_write(mdp5_kms, hw->pp_split.ppb_ctl, BIT(5));
+
+	pr_info("talkman-mdss: 8992 cmd dest-split intf=%d slave=%d\n",
+		intf->num, slave.num);
+	return true;
+}
+
 static void set_ctl_op(struct mdp5_ctl *ctl, struct mdp5_pipeline *pipeline)
 {
 	unsigned long flags;
@@ -162,6 +211,8 @@ int mdp5_ctl_set_pipeline(struct mdp5_ctl *ctl, struct mdp5_pipeline *pipeline)
 	/* Virtual interfaces need not set a display intf (e.g.: Writeback) */
 	if (!mdp5_cfg_intf_is_virtual(intf->type))
 		set_display_intf(mdp5_kms, intf);
+
+	mdp5_8992_cmd_dst_split(mdp5_kms, intf);
 
 	set_ctl_op(ctl, pipeline);
 

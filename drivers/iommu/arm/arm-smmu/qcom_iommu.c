@@ -929,7 +929,9 @@ static int qcom_iommu_ctx_probe(struct platform_device *pdev)
 	 * ctxs do not need this.
 	 */
 	if (of_device_is_compatible(dev->parent->of_node,
-				    "qcom,msm8974-mdp-iommu")) {
+				    "qcom,msm8974-mdp-iommu") ||
+	    of_device_is_compatible(dev->parent->of_node,
+				    "qcom,msm8992-mdp-iommu")) {
 		dev_info(dev, "MDP ctx map after parent resume\n");
 		ret = pm_runtime_resume_and_get(dev->parent);
 		if (ret)
@@ -939,13 +941,17 @@ static int qcom_iommu_ctx_probe(struct platform_device *pdev)
 	ctx->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(ctx->base)) {
 		if (of_device_is_compatible(dev->parent->of_node,
-					    "qcom,msm8974-mdp-iommu"))
+					    "qcom,msm8974-mdp-iommu") ||
+		    of_device_is_compatible(dev->parent->of_node,
+					    "qcom,msm8992-mdp-iommu"))
 			pm_runtime_put(dev->parent);
 		return PTR_ERR(ctx->base);
 	}
 
 	if (of_device_is_compatible(dev->parent->of_node,
-				    "qcom,msm8974-mdp-iommu"))
+				    "qcom,msm8974-mdp-iommu") ||
+	    of_device_is_compatible(dev->parent->of_node,
+				    "qcom,msm8992-mdp-iommu"))
 		pm_runtime_put(dev->parent);
 
 	irq = platform_get_irq(pdev, 0);
@@ -1050,6 +1056,8 @@ static int qcom_iommu_device_probe(struct platform_device *pdev)
 	qcom_iommu->max_asid = max_asid;
 	qcom_iommu->dev = dev;
 	qcom_iommu->cfg = of_device_get_match_data(dev);
+	if (of_device_is_compatible(dev->of_node, "qcom,msm8992-mdp-iommu"))
+		dev_info(dev, "talkman-iommu: 8992 mdp V7S BFB\n");
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res) {
@@ -1308,12 +1316,51 @@ static const struct qcom_iommu_cfg msm8974_venus_cfg = {
 	.num_bfb = ARRAY_SIZE(msm8974_venus_bfb),
 };
 
+
+/*
+ * MSM8992 MDP QSMMU v1. Same programming model as MSM8974. Talkman
+ * 3.10 mmo_defconfig leaves CONFIG_IOMMU_LPAE off, so the pagetable
+ * format is short-descriptor (ARM_V7S), not LPAE. BFB values are from
+ * the 3.10 msm8992-iommu.dtsi tables with the downstream 0x2000
+ * impl-def bias removed. MDP is TZ-managed (secure id 1). GPU stays off.
+ */
+static const struct qcom_iommu_bfb_reg msm8992_mdp_bfb[] = {
+	{ 0x04c, 0x007fffff },
+	{ 0x060, 0x00001777 },
+	{ 0x514, 0x00000000 },
+	{ 0x540, 0x00000004 },
+	{ 0x56c, 0x00000010 },
+	{ 0x0ac, 0x00005000 },
+	{ 0x15c, 0x0000cc66 },
+	{ 0x20c, 0x00002000 },
+	{ 0x2bc, 0x0000cc10 },
+	{ 0x314, 0x00000000 },
+	{ 0x394, 0x00000000 },
+	{ 0x414, 0x00000028 },
+	{ 0x494, 0x00000068 },
+	{ 0x008, 0x00000000 },
+	{ 0x00c, 0x00000000 },
+	{ 0x010, 0x00000000 },
+	{ 0x014, 0x00000000 },
+};
+
+static const struct qcom_iommu_cfg msm8992_mdp_cfg = {
+	.halt = true,
+	.no_stall = true,
+	.fmt = ARM_V7S,
+	.no_afe = true,
+	.ctx_restore = true,
+	.bfb = msm8992_mdp_bfb,
+	.num_bfb = ARRAY_SIZE(msm8992_mdp_bfb),
+};
+
 static const struct of_device_id qcom_iommu_of_match[] = {
 	{ .compatible = "qcom,msm-iommu-v1" },
 	{ .compatible = "qcom,msm-iommu-v2" },
 	{ .compatible = "qcom,msm8974-gpu-iommu", .data = &msm8974_gpu_cfg },
 	{ .compatible = "qcom,msm8974-mdp-iommu", .data = &msm8974_mdp_cfg },
 	{ .compatible = "qcom,msm8974-venus-iommu", .data = &msm8974_venus_cfg },
+	{ .compatible = "qcom,msm8992-mdp-iommu", .data = &msm8992_mdp_cfg },
 	{ /* sentinel */ }
 };
 

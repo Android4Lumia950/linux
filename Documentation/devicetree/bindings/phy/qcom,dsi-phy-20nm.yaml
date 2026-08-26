@@ -14,19 +14,27 @@ allOf:
 
 properties:
   compatible:
-    const: qcom,dsi-phy-20nm
+    enum:
+      - qcom,dsi-phy-20nm
+      - qcom,msm8992-dsi-phy-20nm
 
   reg:
+    minItems: 3
+    maxItems: 4
     items:
       - description: dsi pll register set
       - description: dsi phy register set
       - description: dsi phy regulator register set
+      - description: DSI1 PLL analog (MSM8992 PLL0 pll_1_base)
 
   reg-names:
+    minItems: 3
+    maxItems: 4
     items:
       - const: dsi_pll
       - const: dsi_phy
       - const: dsi_phy_regulator
+      - const: dsi_pll_1
 
   vcca-supply:
     description: Phandle to vcca regulator device node.

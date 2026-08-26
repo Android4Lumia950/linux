@@ -795,6 +795,8 @@ static int qcom_labibb_regulator_probe(struct platform_device *pdev)
 			return -EINVAL;
 		}
 
+		dev_info(dev, "talkman-labibb: %s perph_type=0x%x expect=0x%x base=0x%x\n",
+			 reg_data->name, type, reg_data->type, reg_data->base);
 		if (WARN_ON((type != QCOM_LAB_TYPE) && (type != QCOM_IBB_TYPE)) ||
 		    WARN_ON(type != reg_data->type))
 			return -EINVAL;

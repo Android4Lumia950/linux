@@ -46,6 +46,7 @@ extern const struct msm_dsi_phy_cfg dsi_phy_28nm_8226_cfgs;
 extern const struct msm_dsi_phy_cfg dsi_phy_28nm_8937_cfgs;
 extern const struct msm_dsi_phy_cfg dsi_phy_28nm_8960_cfgs;
 extern const struct msm_dsi_phy_cfg dsi_phy_20nm_cfgs;
+extern const struct msm_dsi_phy_cfg dsi_phy_20nm_8992_cfgs;
 extern const struct msm_dsi_phy_cfg dsi_phy_14nm_cfgs;
 extern const struct msm_dsi_phy_cfg dsi_phy_14nm_6150_cfgs;
 extern const struct msm_dsi_phy_cfg dsi_phy_14nm_660_cfgs;
@@ -121,6 +122,8 @@ struct msm_dsi_phy {
 
 	struct clk_hw_onecell_data *provided_clocks;
 
+	u8 dphy_panel_timings[12];
+	bool has_dphy_panel_timings;
 	bool state_saved;
 };
 

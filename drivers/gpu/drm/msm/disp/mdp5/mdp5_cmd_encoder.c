@@ -71,6 +71,39 @@ static int pingpong_tearcheck_setup(struct drm_encoder *encoder,
 			MDP5_PP_SYNC_THRESH_CONTINUE(4));
 	mdp5_write(mdp5_kms, REG_MDP5_PP_AUTOREFRESH_CONFIG(pp_id), 0x0);
 
+	/*
+	 * 3.10 mdss_mdp_intf_cmd: pingpong-split also programs
+	 * slave_pingpong_base (CAF 0x73000 / mainline 0x72000 =
+	 * PP0 + pp_split.slave_pp_off). Do not use a fake PP index;
+	 * xml may only enumerate two pingpongs.
+	 */
+	if (pp_id == 0) {
+		const struct mdp5_cfg_hw *hw;
+		u32 s;
+
+		hw = mdp5_cfg_get_hw_config(mdp5_kms->cfg);
+		s = hw ? hw->pp_split.slave_pp_off : 0;
+		if (s) {
+			mdp5_write(mdp5_kms,
+				   REG_MDP5_PP_SYNC_CONFIG_VSYNC(0) + s, cfg);
+			mdp5_write(mdp5_kms,
+				   REG_MDP5_PP_SYNC_CONFIG_HEIGHT(0) + s,
+				   (2 * mode->vtotal));
+			mdp5_write(mdp5_kms,
+				   REG_MDP5_PP_VSYNC_INIT_VAL(0) + s, mode->vdisplay);
+			mdp5_write(mdp5_kms,
+				   REG_MDP5_PP_RD_PTR_IRQ(0) + s, mode->vdisplay + 1);
+			mdp5_write(mdp5_kms,
+				   REG_MDP5_PP_START_POS(0) + s, mode->vdisplay);
+			mdp5_write(mdp5_kms,
+				   REG_MDP5_PP_SYNC_THRESH(0) + s,
+				   MDP5_PP_SYNC_THRESH_START(4) |
+				   MDP5_PP_SYNC_THRESH_CONTINUE(4));
+			mdp5_write(mdp5_kms,
+				   REG_MDP5_PP_AUTOREFRESH_CONFIG(0) + s, 0x0);
+		}
+	}
+
 	return 0;
 }
 
@@ -96,6 +129,15 @@ static int pingpong_tearcheck_enable(struct drm_encoder *encoder)
 	}
 
 	mdp5_write(mdp5_kms, REG_MDP5_PP_TEAR_CHECK_EN(pp_id), 1);
+	if (pp_id == 0) {
+		const struct mdp5_cfg_hw *hw;
+		u32 s;
+
+		hw = mdp5_cfg_get_hw_config(mdp5_kms->cfg);
+		s = hw ? hw->pp_split.slave_pp_off : 0;
+		if (s)
+			mdp5_write(mdp5_kms, REG_MDP5_PP_TEAR_CHECK_EN(0) + s, 1);
+	}
 
 	return 0;
 }
@@ -107,6 +149,15 @@ static void pingpong_tearcheck_disable(struct drm_encoder *encoder)
 	int pp_id = mixer->pp;
 
 	mdp5_write(mdp5_kms, REG_MDP5_PP_TEAR_CHECK_EN(pp_id), 0);
+	if (pp_id == 0) {
+		const struct mdp5_cfg_hw *hw;
+		u32 s;
+
+		hw = mdp5_cfg_get_hw_config(mdp5_kms->cfg);
+		s = hw ? hw->pp_split.slave_pp_off : 0;
+		if (s)
+			mdp5_write(mdp5_kms, REG_MDP5_PP_TEAR_CHECK_EN(0) + s, 0);
+	}
 	clk_disable_unprepare(mdp5_kms->vsync_clk);
 }
 

@@ -224,6 +224,15 @@ dsi_get_config(struct msm_dsi_host *msm_host)
 	}
 
 	ret = dsi_get_version(msm_host->ctrl_base, &major, &minor);
+	{
+		struct resource *vres;
+
+		vres = platform_get_resource_byname(msm_host->pdev,
+						    IORESOURCE_MEM, "dsi_ctrl");
+		dev_info(dev, "dsi_get_version pa=%pa major=%u minor=%08x ret=%d\n",
+			 vres ? &vres->start : NULL, major, minor, ret);
+	}
+
 	if (ret) {
 		dev_err_probe(dev, ret, "%s: Invalid version\n", __func__);
 		goto disable_clks;
@@ -1448,9 +1457,18 @@ static int dsi_cmd_dma_tx(struct msm_dsi_host *msm_host, int len)
 		ret = wait_for_completion_timeout(&msm_host->dma_comp,
 					msecs_to_jiffies(200));
 		DBG("ret=%d", ret);
-		if (ret == 0)
+		if (ret == 0) {
+			pr_err("talkman-dsi: dma timeout id=%d irq=%u dma_base=%llx len=%d ctrl=%x intr=%x lane_st=%x lane_ctrl=%x clk_ctrl=%x dma_ctrl=%x\n",
+			       msm_host->id, msm_host->irq,
+			       (unsigned long long)dma_base, len,
+			       dsi_read(msm_host, REG_DSI_CTRL),
+			       dsi_read(msm_host, REG_DSI_INTR_CTRL),
+			       dsi_read(msm_host, REG_DSI_LANE_STATUS),
+			       dsi_read(msm_host, REG_DSI_LANE_CTRL),
+			       dsi_read(msm_host, REG_DSI_CLK_CTRL),
+			       dsi_read(msm_host, REG_DSI_CMD_DMA_CTRL));
 			ret = -ETIMEDOUT;
-		else
+		} else
 			ret = len;
 	} else {
 		ret = len;

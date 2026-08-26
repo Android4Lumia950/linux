@@ -1008,6 +1008,109 @@ static const struct mdp5_cfg_hw msm8937_config = {
 	.max_clk = 320000000,
 };
 
+
+static const struct mdp5_cfg_hw msm8992_config = {
+	.name = "msm8992",
+	.mdp = {
+		.count = 1,
+		.caps = MDP_CAP_SMP |
+			MDP_CAP_SRC_SPLIT |
+			0,
+	},
+	.smp = {
+		.mmb_count = 34,
+		.mmb_size = 8192,
+		.clients = {
+			[SSPP_VIG0] =  1, [SSPP_VIG1] =  4, [SSPP_VIG2] =  7,
+			[SSPP_DMA0] = 10, [SSPP_DMA1] = 13,
+			[SSPP_RGB0] = 16, [SSPP_RGB1] = 17, [SSPP_RGB2] = 18,
+		},
+		.reserved_state[0] = GENMASK(20, 0),
+		.reserved = {
+			 [1] = 2,  [4] = 2,  [7] = 2,
+			[16] = 5, [17] = 5, [18] = 5,
+		},
+	},
+	.ctl = {
+		.count = 3,
+		.base = { 0x01000, 0x01200, 0x01400 },
+		.flush_hw_mask = 0xf04238ff,
+	},
+	.pipe_vig = {
+		.count = 3,
+		.base = { 0x04000, 0x06000, 0x08000 },
+		.caps = MDP_PIPE_CAP_HFLIP | MDP_PIPE_CAP_VFLIP |
+				MDP_PIPE_CAP_SCALE | MDP_PIPE_CAP_CSC |
+				MDP_PIPE_CAP_DECIMATION,
+	},
+	.pipe_rgb = {
+		.count = 3,
+		.base = { 0x14000, 0x16000, 0x18000 },
+		.caps = MDP_PIPE_CAP_HFLIP | MDP_PIPE_CAP_VFLIP |
+				MDP_PIPE_CAP_SCALE | MDP_PIPE_CAP_DECIMATION,
+	},
+	.pipe_dma = {
+		.count = 2,
+		.base = { 0x24000, 0x26000 },
+		.caps = MDP_PIPE_CAP_HFLIP | MDP_PIPE_CAP_VFLIP,
+	},
+	.pipe_cursor = {
+		.count = 1,
+		.base = { 0x34000 },
+		.caps = MDP_PIPE_CAP_HFLIP | MDP_PIPE_CAP_VFLIP |
+				MDP_PIPE_CAP_CURSOR,
+	},
+	.lm = {
+		.count = 2,
+		.base = { 0x44000, 0x45000 },
+		.instances = {
+				{ .id = 0, .pp = 0, .dspp = 0,
+				  .caps = MDP_LM_CAP_DISPLAY |
+					  MDP_LM_CAP_PAIR, },
+				{ .id = 1, .pp = 1, .dspp = -1,
+				  .caps = MDP_LM_CAP_DISPLAY, },
+			     },
+		.nb_stages = 5,
+		.max_width = 4096,
+		.max_height = 0xFFFF,
+	},
+	.dspp = {
+		.count = 1,
+		.base = { 0x54000 },
+	},
+	.ad = {
+		.count = 1,
+		.base = { 0x78000 },
+	},
+	.pp = {
+		.count = 2,
+		.base = { 0x70000, 0x70800 },
+	},
+	.intf = {
+		.base = { 0x6a000, 0x6a800, 0x6b000, 0x6b800 },
+		.connect = {
+			[0] = INTF_DISABLED,
+			[1] = INTF_DSI,
+			[2] = INTF_DSI,
+			[3] = INTF_HDMI,
+		},
+	},
+	.perf = {
+		.ab_inefficiency = 100,
+		.ib_inefficiency = 100,
+		.clk_inefficiency = 105
+	},
+	.pp_split = {
+		.split_display_en = 0x2f4,
+		.split_display_upper = 0x2f8,
+		.split_display_lower = 0x3f0,
+		.ppb_ctl = 0x334,
+		.ppb_cfg = 0x338,
+		.slave_pp_off = 0x2000,
+	},
+	.max_clk = 400000000,
+};
+
 static const struct mdp5_cfg_handler cfg_handlers_v1[] = {
 	{ .revision = 1, .config = { .hw = &msm8x26_config } },
 	{ .revision = 2, .config = { .hw = &msm8x74_config } },
@@ -1015,6 +1118,7 @@ static const struct mdp5_cfg_handler cfg_handlers_v1[] = {
 	{ .revision = 6, .config = { .hw = &msm8x16_config } },
 	{ .revision = 8, .config = { .hw = &msm8x36_config } },
 	{ .revision = 9, .config = { .hw = &msm8x94_config } },
+	{ .revision = 10, .config = { .hw = &msm8992_config } },
 	{ .revision = 7, .config = { .hw = &msm8x96_config } },
 	{ .revision = 11, .config = { .hw = &msm8x76_config } },
 	{ .revision = 14, .config = { .hw = &msm8937_config } },

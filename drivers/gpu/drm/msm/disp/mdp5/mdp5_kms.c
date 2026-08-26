@@ -467,9 +467,14 @@ static void read_mdp_hw_revision(struct mdp5_kms *mdp5_kms,
 	struct device *dev = &mdp5_kms->pdev->dev;
 	u32 version;
 
-	pm_runtime_get_sync(dev);
-	version = mdp5_read(mdp5_kms, REG_MDP5_HW_VERSION);
-	pm_runtime_put_sync(dev);
+	{
+		int pret = pm_runtime_get_sync(dev);
+
+		version = mdp5_read(mdp5_kms, REG_MDP5_HW_VERSION);
+		dev_info(dev, "talkman-mdp: kms pm=%d raw0=%08x raw_caf0xf00=%08x\n",
+			 pret, version, mdp5_read(mdp5_kms, 0xf00));
+		pm_runtime_put_sync(dev);
+	}
 
 	*major = FIELD(version, MDP5_HW_VERSION_MAJOR);
 	*minor = FIELD(version, MDP5_HW_VERSION_MINOR);
@@ -862,6 +867,40 @@ static int mdp5_dev_probe(struct platform_device *pdev)
 		return dev_err_probe(&pdev->dev, irq, "failed to get irq\n");
 
 	mdp5_kms->base.base.irq = irq;
+
+	{
+		struct resource *r;
+		u32 raw0, raw_caf;
+		int pret;
+
+		r = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+						 "mdp_phys");
+		/*
+		 * CAF 8992/8994 HW_VERSION is mdp_phys+0x1000 = 0xfd901000.
+		 * Mainline maps 0xfd900100, so +0xf00 is that register.
+		 * Enable parent MDSS GDSC + MDP AHB/AXI/core before the
+		 * read. Do not feed either value into mdp5_cfg_init.
+		 */
+		pret = pm_runtime_get_sync(pdev->dev.parent);
+		if (pret < 0) {
+			dev_info(&pdev->dev,
+				 "talkman-mdp: pa=%pa parent_pm=%d skip read\n",
+				 r ? &r->start : NULL, pret);
+		} else {
+			clk_prepare_enable(mdp5_kms->ahb_clk);
+			clk_prepare_enable(mdp5_kms->axi_clk);
+			clk_prepare_enable(mdp5_kms->core_clk);
+			raw0 = readl_relaxed(mdp5_kms->mmio);
+			raw_caf = readl_relaxed(mdp5_kms->mmio + 0xf00);
+			dev_info(&pdev->dev,
+				 "talkman-mdp: pa=%pa parent_pm=%d raw0=%08x raw_caf0xf00=%08x\n",
+				 r ? &r->start : NULL, pret, raw0, raw_caf);
+			clk_disable_unprepare(mdp5_kms->core_clk);
+			clk_disable_unprepare(mdp5_kms->axi_clk);
+			clk_disable_unprepare(mdp5_kms->ahb_clk);
+			pm_runtime_put_sync(pdev->dev.parent);
+		}
+	}
 
 	return msm_drv_probe(&pdev->dev, mdp5_kms_init, &mdp5_kms->base.base);
 }

@@ -47,3 +47,69 @@
 &tlmm {
 	compatible = "qcom,msm8992-pinctrl";
 };
+
+/*
+ * MSM8992 display SS is not the MSM8994 map that msm8994.dtsi describes.
+ *
+ * CAF msm8992-mdss.dtsi (identical on Xiaomi libra and Sony 8992):
+ *   DSI0 ctrl 0xfd994000 / phy 0xfd994500 / phy regulator 0xfd994780
+ *   DSI1 ctrl 0xfd996000 / phy 0xfd996500 / phy regulator 0xfd994780 (shared)
+ *   HDMI TX  0xfd9a0000  (this is *not* DSI1)
+ *   VBIF     0xfd9b0000
+ *   mmss_misc 0xfd828000, ulp-clamp 0x14, phyreset 0x108
+ *
+ * CAF qcom,mdss-mdp-reg-offset = <0x1000> on mdp_phys 0xfd900000
+ * (msm8992-mdss.dtsi and msm8994-mdss.dtsi). msm8974 is 0x100.
+ * Live Talkman: HW_VERSION at 0xfd901000 is 0x100a0000; 0xfd900100
+ * reads 0 (mdptest=mdpver #46). Size 0x8f000 = CAF 0x90000 - 0x1000,
+ * ending at 0xfd990000, before 8992 DSI0 0xfd994000. Do not keep
+ * mainline 0x98000 from this base (that overlaps DSI).
+ *
+ * Talkman 3.10 MDP QSMMU is 0xfd9b4000 / ctx 0xfd9bc000 (msm8992-iommu.dtsi),
+ * adjacent to that VBIF — same neighborhood as CAF 8992, not 8994
+ * (VBIF 0xfd9c8000 / SMMU 0xfd9cc000).
+ *
+ * 20nm PLL window is phy-0x200, same relative layout as mainline 8994
+ * (ctrl+0x300 / +0x500 / +0x780). DSI1 regulator stays CAF 0xfd994780.
+ */
+&mdss {
+	reg = <0xfd900000 0x1000>,
+	      <0xfd9b0000 0x4d4>;
+};
+
+&mdp {
+	reg = <0xfd901000 0x8f000>;
+};
+
+&mdp_iommu {
+	compatible = "qcom,msm8992-mdp-iommu";
+	reg = <0xfd9b4000 0x2600>;
+	ranges = <0 0xfd9bc000 0x3000>;
+};
+
+&dsi0 {
+	reg = <0xfd994000 0x260>;
+};
+
+&dsi0_phy {
+	compatible = "qcom,msm8992-dsi-phy-20nm";
+	reg = <0xfd994300 0x200>,
+	      <0xfd994500 0x280>,
+	      <0xfd994780 0x30>,
+	      <0xfd996300 0x200>;
+	reg-names = "dsi_pll", "dsi_phy", "dsi_phy_regulator", "dsi_pll_1";
+};
+
+&dsi1 {
+	compatible = "qcom,msm8994-dsi-ctrl", "qcom,mdss-dsi-ctrl";
+	reg = <0xfd996000 0x260>;
+	assigned-clock-parents = <&dsi0_phy 0>, <&dsi0_phy 1>;
+};
+
+&dsi1_phy {
+	compatible = "qcom,msm8992-dsi-phy-20nm";
+	reg = <0xfd996300 0x200>,
+	      <0xfd996500 0x280>,
+	      <0xfd994780 0x30>;
+	reg-names = "dsi_pll", "dsi_phy", "dsi_phy_regulator";
+};

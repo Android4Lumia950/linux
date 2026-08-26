@@ -7,6 +7,7 @@
 
 #include "msm_kms.h"
 #include "dsi.h"
+#include "phy/dsi_phy.h"
 
 #define DSI_CLOCK_MASTER	DSI_0
 #define DSI_CLOCK_SLAVE		DSI_1
@@ -121,12 +122,41 @@ static int dsi_mgr_setup_components(int id)
 	return 0;
 }
 
+static void msm_dsi_copy_panel_dphy_timings(struct msm_dsi *msm_dsi)
+{
+	struct msm_dsi *hosts[2];
+	struct device_node *child;
+	u8 buf[12];
+	int i;
+
+	if (!msm_dsi || !msm_dsi->phy)
+		return;
+
+	hosts[0] = msm_dsi;
+	hosts[1] = dsi_mgr_get_other_dsi(msm_dsi->id);
+	for (i = 0; i < ARRAY_SIZE(hosts); i++) {
+		if (!hosts[i] || !hosts[i]->pdev)
+			continue;
+		for_each_child_of_node(hosts[i]->pdev->dev.of_node, child) {
+			if (!of_property_read_u8_array(child,
+					"qcom,mdss-dsi-panel-timings",
+					buf, 12)) {
+				memcpy(msm_dsi->phy->dphy_panel_timings, buf, 12);
+				msm_dsi->phy->has_dphy_panel_timings = true;
+				of_node_put(child);
+				return;
+			}
+		}
+	}
+}
+
 static int enable_phy(struct msm_dsi *msm_dsi,
 		      struct msm_dsi_phy_shared_timings *shared_timings)
 {
 	struct msm_dsi_phy_clk_request clk_req;
 	bool is_bonded_dsi = IS_BONDED_DSI();
 
+	msm_dsi_copy_panel_dphy_timings(msm_dsi);
 	msm_dsi_host_get_phy_clk_req(msm_dsi->host, &clk_req, is_bonded_dsi);
 
 	return msm_dsi_phy_enable(msm_dsi->phy, &clk_req, shared_timings);

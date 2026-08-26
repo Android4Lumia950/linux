@@ -1416,3 +1416,13 @@ config DRM_PANEL_XINPENG_XPP055C272
 	  XPP055C272 controller for 720x1280 LCD panels with MIPI/RGB/SPI
 	  system interfaces.
 endmenu
+
+config DRM_PANEL_MICROSOFT_DUKE
+	tristate "Microsoft Lumia 950 Duke dual-DSI command-mode panel"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	help
+	  Duke 1440p dual-DSI command-mode panel on Talkman (Lumia 950).
+	  Sequence from 3.10 dsi-panel-duke-wqhd-dualdsi-cmd.dtsi.
+	  Do not use on Cityman (Sergej).
+

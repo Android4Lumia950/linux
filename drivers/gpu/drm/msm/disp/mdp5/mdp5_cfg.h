@@ -112,6 +112,15 @@ struct mdp5_cfg_hw {
 	struct mdp5_intf_block intf;
 	struct mdp5_perf_block perf;
 
+	struct {
+		u32 split_display_en;
+		u32 split_display_upper;
+		u32 split_display_lower;
+		u32 ppb_ctl;
+		u32 ppb_cfg;
+		u32 slave_pp_off;
+	} pp_split;
+
 	uint32_t max_clk;
 };
 

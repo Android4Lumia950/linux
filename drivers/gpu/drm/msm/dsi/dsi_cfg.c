@@ -94,7 +94,8 @@ static const struct msm_dsi_config msm8994_dsi_cfg = {
 	.bus_clk_names = dsi_6g_bus_clk_names,
 	.num_bus_clks = ARRAY_SIZE(dsi_6g_bus_clk_names),
 	.io_start = {
-		{ 0xfd998000, 0xfd9a0000 },
+		{ 0xfd998000, 0xfd9a0000 }, /* MSM8994 */
+		{ 0xfd994000, 0xfd996000 }, /* MSM8992 */
 	},
 };
 

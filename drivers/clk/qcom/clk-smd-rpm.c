@@ -158,6 +158,7 @@
 #define to_clk_smd_rpm(_hw) container_of(_hw, struct clk_smd_rpm, hw)
 
 static struct qcom_smd_rpm *rpmcc_smd_rpm;
+static bool rpmcc_defer_sleep_set;
 
 struct clk_smd_rpm {
 	const int rpm_res_type;
@@ -183,6 +184,8 @@ struct rpm_smd_clk_desc {
 	const struct clk_smd_rpm ** const icc_clks;
 	size_t num_icc_clks;
 	bool scaling_before_handover;
+	/* 3.10 rpm-smd buffers SLEEP_SET until power collapse. */
+	bool defer_sleep_set;
 };
 
 static DEFINE_MUTEX(rpm_smd_clk_lock);
@@ -196,11 +199,32 @@ static int clk_smd_rpm_handoff(const struct clk_smd_rpm *r)
 		.value = cpu_to_le32(r->branch ? 1 : INT_MAX),
 	};
 
+	/*
+	 * CAF clock-rpm-8992.c after enable_rpm_scaling():
+	 * pnoc keepalive 19.2 MHz, mmssnoc_ahb_a 40 MHz (sleep 0).
+	 * INT_MAX on BUS_CLK id 3 hangs WP RPM once scaling is on.
+	 */
+	if (rpmcc_defer_sleep_set && !r->branch &&
+	    r->rpm_res_type == QCOM_SMD_RPM_BUS_CLK) {
+		if (r->rpm_clk_id == 3)
+			req.value = cpu_to_le32(DIV_ROUND_UP(40000000, 1000));
+		else if (r->rpm_clk_id == 0)
+			req.value = cpu_to_le32(DIV_ROUND_UP(19200000, 1000));
+	}
+
+	pr_info("talkman-rpmcc: handoff type=0x%08x id=%u branch=%u val=%u\n",
+		r->rpm_res_type, r->rpm_clk_id, r->branch,
+		le32_to_cpu(req.value));
 	ret = qcom_rpm_smd_write(rpmcc_smd_rpm, QCOM_SMD_RPM_ACTIVE_STATE,
 				 r->rpm_res_type, r->rpm_clk_id, &req,
 				 sizeof(req));
-	if (ret)
+	if (ret) {
+		pr_err("talkman-rpmcc: handoff ACTIVE fail type=0x%08x id=%u ret=%d\n",
+		       r->rpm_res_type, r->rpm_clk_id, ret);
 		return ret;
+	}
+	if (rpmcc_defer_sleep_set)
+		return 0;
 	ret = qcom_rpm_smd_write(rpmcc_smd_rpm, QCOM_SMD_RPM_SLEEP_STATE,
 				 r->rpm_res_type, r->rpm_clk_id, &req,
 				 sizeof(req));
@@ -403,12 +427,17 @@ static int clk_smd_rpm_enable_scaling(void)
 		.value = cpu_to_le32(1),
 	};
 
-	ret = qcom_rpm_smd_write(rpmcc_smd_rpm, QCOM_SMD_RPM_SLEEP_STATE,
-				 QCOM_SMD_RPM_MISC_CLK,
-				 QCOM_RPM_SCALING_ENABLE_ID, &req, sizeof(req));
-	if (ret) {
-		pr_err("RPM clock scaling (sleep set) not enabled!\n");
-		return ret;
+	if (!rpmcc_defer_sleep_set) {
+		ret = qcom_rpm_smd_write(rpmcc_smd_rpm, QCOM_SMD_RPM_SLEEP_STATE,
+					 QCOM_SMD_RPM_MISC_CLK,
+					 QCOM_RPM_SCALING_ENABLE_ID, &req,
+					 sizeof(req));
+		if (ret) {
+			pr_err("RPM clock scaling (sleep set) not enabled!\n");
+			return ret;
+		}
+	} else {
+		pr_info("talkman-rpmcc: defer SLEEP_SET scaling (3.10 buffer)\n");
 	}
 
 	ret = qcom_rpm_smd_write(rpmcc_smd_rpm, QCOM_SMD_RPM_ACTIVE_STATE,
@@ -871,6 +900,7 @@ static const struct rpm_smd_clk_desc rpm_clk_msm8992 = {
 	.num_clks = ARRAY_SIZE(msm8992_clks),
 	.icc_clks = bimc_pcnoc_snoc_cnoc_ocmem_icc_clks,
 	.num_icc_clks = ARRAY_SIZE(bimc_pcnoc_snoc_cnoc_ocmem_icc_clks),
+	.defer_sleep_set = true,
 };
 
 static struct clk_smd_rpm *msm8994_clks[] = {
@@ -1355,10 +1385,27 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 	if (!desc)
 		return -EINVAL;
 
+	rpmcc_defer_sleep_set = desc->defer_sleep_set;
+
 	rpm_smd_clks = desc->clks;
 	num_clks = desc->num_clks;
 
-	if (desc->scaling_before_handover) {
+	/*
+	 * CAF clock-rpm-8992.c msm_rpmcc_8992_probe:
+	 *   vote_bimc ACTIVE INT_MAX, of_msm_clock_register (3.10 handoff
+	 *   does not send RPM), then enable_rpm_scaling().
+	 * Mainline otherwise hands off every clock before scaling.
+	 */
+	if (rpmcc_defer_sleep_set) {
+		pr_info("talkman-rpmcc: 8992 vote BIMC then enable_scaling\n");
+		ret = clk_smd_rpm_handoff(&clk_smd_rpm_bimc_clk);
+		if (ret)
+			goto err;
+		ret = clk_smd_rpm_enable_scaling();
+		if (ret)
+			goto err;
+		pr_info("talkman-rpmcc: enable_scaling ok, handoff remaining\n");
+	} else if (desc->scaling_before_handover) {
 		ret = clk_smd_rpm_enable_scaling();
 		if (ret)
 			goto err;
@@ -1376,13 +1423,16 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 	for (i = 0; i < desc->num_icc_clks; i++) {
 		if (!desc->icc_clks[i])
 			continue;
+		if (rpmcc_defer_sleep_set &&
+		    desc->icc_clks[i] == &clk_smd_rpm_bimc_clk)
+			continue;
 
 		ret = clk_smd_rpm_handoff(desc->icc_clks[i]);
 		if (ret)
 			goto err;
 	}
 
-	if (!desc->scaling_before_handover) {
+	if (!desc->scaling_before_handover && !rpmcc_defer_sleep_set) {
 		ret = clk_smd_rpm_enable_scaling();
 		if (ret)
 			goto err;

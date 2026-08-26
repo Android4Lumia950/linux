@@ -8,9 +8,265 @@
 
 #include "msm8992.dtsi"
 #include "msm8994-msft-lumia-octagon.dtsi"
+#include <dt-bindings/clock/qcom,mmcc-msm8994.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Microsoft Lumia 950";
 	compatible = "microsoft,talkman", "qcom,msm8992";
 	chassis-type = "handset";
+};
+
+/*
+ * Octagon ramoops@d9d00000 has //no-map commented. Proven on this
+ * WP BootMgr path: the window only survives sysrq-b with no-map.
+ */
+&{/reserved-memory/ramoops@d9d00000} {
+	no-map;
+};
+
+&gpu {
+	status = "disabled";
+};
+
+/*
+ * RPM SMD regulators-0 does not ACK SMPA/LDO votes on this WP RPM
+ * (s4 enable -ETIMEDOUT; uv-before-swen also timed out s3 and wedged
+ * rpmpd). 3.10 voted these rails via rpm-smd-regulator because it had
+ * no SPMI regulator driver. Mainline already binds
+ * qcom,pm8994-regulators on SID 1; live sysfs shows PM8994 s4 1.8 V
+ * enabled and l12 1.8 V present. Point DSI at those SPMI nodes — the
+ * same PMIC registers RPM would have written.
+ *
+ * Voltages from 3.10 mmo/common/regulator.dtsi and CAF msm8992-mdss.
+ * Host vddio is Talkman board overlay pm8994_s4, not CAF L12.
+ */
+&pm8994_spmi_regulators {
+	talkman_s4: s4 {
+		regulator-name = "talkman-s4";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	talkman_l2: l2 {
+		regulator-name = "talkman-l2";
+		regulator-min-microvolt = <1250000>;
+		regulator-max-microvolt = <1250000>;
+	};
+
+	talkman_l12: l12 {
+		regulator-name = "talkman-l12";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+	};
+
+	talkman_l14: l14 {
+		regulator-name = "talkman-l14";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+	};
+
+	talkman_l28: l28 {
+		regulator-name = "talkman-l28";
+		regulator-min-microvolt = <1000000>;
+		regulator-max-microvolt = <1000000>;
+	};
+};
+
+/*
+ * PMI8994 LAB @ 0xde00 / IBB @ 0xdc00 (SID 3). Same bases as mainline
+ * pmi8998_labibb_data. Probe reads PERPH_TYPE (0x24 / 0x20); do not stub.
+ *
+ * 3.10 msm-pmi8994.dtsi leaves qpnp-labibb disabled. Talkman chi does
+ * not enable it. Cityman chi does (mode string "oled" is not a value
+ * 3.10 qpnp-labibb-regulator.c accepts). Talkman 3.10 WLED is okay and
+ * maps the same 0xdc00/0xde00 windows; mainline pmi8994 wled@d800 is
+ * disabled and does not map those peripherals.
+ *
+ * Interrupts match mainline pmi8950.dtsi (same SID 3, 0xde / 0xdc).
+ * regulator-min/max from 3.10 msm-pmi8994.dtsi. Not regulator-fixed.
+ */
+&spmi_bus {
+	pmic@3 {
+		labibb {
+			compatible = "qcom,pmi8994-lab-ibb", "qcom,pmi8998-lab-ibb";
+
+			ibb: ibb {
+				interrupts = <0x3 0xdc 0x2 IRQ_TYPE_EDGE_RISING>,
+					     <0x3 0xdc 0x0 IRQ_TYPE_LEVEL_LOW>;
+				interrupt-names = "sc-err", "ocp";
+				regulator-min-microvolt = <4600000>;
+				regulator-max-microvolt = <6000000>;
+			};
+
+			lab: lab {
+				interrupts = <0x3 0xde 0x1 IRQ_TYPE_EDGE_RISING>,
+					     <0x3 0xde 0x0 IRQ_TYPE_LEVEL_LOW>;
+				interrupt-names = "sc-err", "ocp";
+				regulator-min-microvolt = <4600000>;
+				regulator-max-microvolt = <6000000>;
+				qcom,soft-start-us = <800>;
+			};
+		};
+	};
+};
+
+&mdss {
+	status = "okay";
+};
+
+/*
+ * CAF msm8992-mdss.dtsi (Xiaomi libra + Sony kitakami 8992):
+ *   vdda = PM8994 L2 1.25V
+ *   vddio = PM8994 L12 1.8V
+ *   vcca = PM8994 L28 1.0V
+ *   vdd  = PM8994 L14 1.8V
+ * Do not use a dummy vddio. CAF 8992 host has no lab/ibb supplies;
+ * mainline msm8994_dsi_cfg (shared 8992 io_start row) still bulk_gets
+ * lab_reg / ibb_reg. Wire the PMI8994 labibb regulators, not
+ * regulator-fixed.
+ *
+ * DSI1 PHY regulator is CAF-shared at 0xfd994780 (not 0xfd996780).
+ * 3.10 mdss_dsi.c maps that window into one shared_ctrl_data for
+ * both ctrls. Mainline msm_ioremap_size uses devm_ioremap (not
+ * ioremap_resource), so the same physical range can be mapped on
+ * both PHY devices. 20nm LDO mode is a property of that shared
+ * block; Talkman set qcom,regulator-ldo-mode on mdss_dsi0 only,
+ * but both PHYs must use LDO so DSI1 enable does not reprogram
+ * the shared regulator with the non-LDO sequence.
+ * DSI1 host vddio stays CAF L12 (board overlay only touched dsi0).
+ *
+ * mdptest=mdpgraph: Duke graph on the proven fd901000 MDP map
+ * (mdpbase #47, HW_VERSION 0x100a0000). Same ports as dsigraph #45.
+ * KMS should now see v1.10. cfg_handlers_v1 has no revision 10.
+ * Do not fake major=1. Do not alias msm8x94.
+ *
+ * Dual-DSI: 3.10 DSI0 cmd-sync-wait-broadcast; DSI1 broadcast +
+ * cmd-sync-wait-trigger. Mainline: dual-dsi-mode + sync-dual-dsi on
+ * both, master-dsi on DSI0 (dsi-controller-main.yaml).
+ *
+ * CAF clock_mmss (msm8992.dtsi and msm8994.dtsi) parents pclk0,
+ * pclk1, byte0, byte1 all from mdss_dsi0_pll muxes. That is not
+ * elish SM8250 CPHY (slave uses DSI0 PLL because CPHY).
+ * mdptest=pll20nm registers dsi0pllbyte/dsi0pll from DSI0 PHY
+ * pll_init (3.10 index==0). mmcc BYTE1 possible_parents already lists
+ * dsi0pllbyte. msm8994.dtsi parents DSI1 assigned-clocks to
+ * dsi1_phy (and names the node dsi@fd9a0000 = HDMI TX). msm8992.dtsi
+ * remaps DSI1 to 0xfd996000 and parents BYTE1/PCLK1 to dsi0_phy 0/1
+ * (CAF). Talkman repeats that parent so the board file shows it.
+ * Do not replace &mmcc assigned-clocks (MMPLL rates).
+ * PLL1 analog is DT dsi_pll_1 on DSI0 PHY (3.10 pll_1_base). DSI1 PHY
+ * maps the same 0xfd996300 window but does not publish byte/pixel.
+ * Do not parent BYTE to XO.
+ *
+ * Panel under DSI0, graph to both hosts (nt36523 / elish). Reset is
+ * gpio78 (3.10 platform-reset-gpio <&msm_gpio 78 0>), same pin as
+ * octagon mdss_dsi pinctrl. TE is gpio10 mdp_vsync (already in
+ * mdss_te_*). 3.10 panel has no vddio; host vdd is L14.
+ */
+&dsi0 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	vdda-supply = <&talkman_l2>;
+	vddio-supply = <&talkman_s4>;
+	vcca-supply = <&talkman_l28>;
+	vdd-supply = <&talkman_l14>;
+	lab_reg-supply = <&lab>;
+	ibb_reg-supply = <&ibb>;
+
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&mdss_dsi_default &mdss_te_default>;
+	pinctrl-1 = <&mdss_dsi_sleep &mdss_te_sleep>;
+
+	qcom,dual-dsi-mode;
+	qcom,sync-dual-dsi;
+	qcom,master-dsi;
+
+	panel@0 {
+		compatible = "microsoft,duke-wqhd-cmd";
+		reg = <0>;
+
+		reset-gpios = <&tlmm 78 GPIO_ACTIVE_LOW>;
+
+		/* 3.10 dsi-panel-duke-wqhd-dualdsi-cmd.dtsi */
+		qcom,mdss-dsi-panel-timings = [97 5A 3E 00 9A 9A 48 5E 4B 03 04 00];
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				duke_in0: endpoint {
+					remote-endpoint = <&dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				duke_in1: endpoint {
+					remote-endpoint = <&dsi1_out>;
+				};
+			};
+		};
+	};
+};
+
+&dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&duke_in0>;
+};
+
+&dsi0_phy {
+	status = "okay";
+	compatible = "qcom,msm8992-dsi-phy-20nm";
+
+	vddio-supply = <&talkman_l12>;
+	vcca-supply = <&talkman_l28>;
+	/* 3.10 &mdss_dsi0 qcom,regulator-ldo-mode */
+	qcom,dsi-phy-regulator-ldo-mode;
+};
+
+&dsi1 {
+	status = "okay";
+
+	vdda-supply = <&talkman_l2>;
+	vddio-supply = <&talkman_l12>;
+	vcca-supply = <&talkman_l28>;
+	vdd-supply = <&talkman_l14>;
+	lab_reg-supply = <&lab>;
+	ibb_reg-supply = <&ibb>;
+
+	qcom,dual-dsi-mode;
+	qcom,sync-dual-dsi;
+
+	/*
+	 * CAF 8992/8994 clock_mmss and 3.10 mdss_dsi@fd996000 parent
+	 * byte1_src/pclk1_src to mdss_dsi0_pll muxes. msm8994.dtsi
+	 * parents BYTE1_CLK_SRC/PCLK1_CLK_SRC to dsi1_phy 0/1. PLL1
+	 * skips the byte tree, so best_parent_hw is -1 and
+	 * clk_byte2_determine_rate → clk_hw_round_rate Oops 96000004
+	 * after PLL0 lock (#60). msm8992.dtsi + this board overlay
+	 * parent both to dsi0_phy (CAF PLL0).
+	 */
+	assigned-clock-parents = <&dsi0_phy 0>, <&dsi0_phy 1>;
+};
+
+&dsi1_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&duke_in1>;
+};
+
+&dsi1_phy {
+	status = "okay";
+	compatible = "qcom,msm8992-dsi-phy-20nm";
+
+	vddio-supply = <&talkman_l12>;
+	vcca-supply = <&talkman_l28>;
+	qcom,dsi-phy-regulator-ldo-mode;
 };
