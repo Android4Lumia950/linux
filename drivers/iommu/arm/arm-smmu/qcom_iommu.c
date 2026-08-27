@@ -908,6 +908,16 @@ static int get_asid(const struct device_node *np)
 	return asid;
 }
 
+static bool qcom_iommu_mdp_mapafter(const struct device *parent)
+{
+	return of_device_is_compatible(parent->of_node,
+				       "qcom,msm8974-mdp-iommu") ||
+	       of_device_is_compatible(parent->of_node,
+				       "qcom,msm8992-mdp-iommu") ||
+	       of_device_is_compatible(parent->of_node,
+				       "qcom,msm8994-mdp-iommu");
+}
+
 static int qcom_iommu_ctx_probe(struct platform_device *pdev)
 {
 	struct qcom_iommu_ctx *ctx;
@@ -925,13 +935,11 @@ static int qcom_iommu_ctx_probe(struct platform_device *pdev)
 	/*
 	 * MDP QSMMU v1 SoC-resets if the context bank is ioremapped
 	 * before the parent is runtime-resumed (MDSS GDSC + clocks).
-	 * Talkman ctx is 0xfd9bc000; Cityman is 0xfd9d4000. GPU/Venus
-	 * ctxs do not need this.
+	 * MDP ctx is a child of the MDP SMMU. Map after parent resume
+	 * so the parent's clocks/GDSC are on. GPU/Venus ctxs do not
+	 * need this.
 	 */
-	if (of_device_is_compatible(dev->parent->of_node,
-				    "qcom,msm8974-mdp-iommu") ||
-	    of_device_is_compatible(dev->parent->of_node,
-				    "qcom,msm8992-mdp-iommu")) {
+	if (qcom_iommu_mdp_mapafter(dev->parent)) {
 		dev_info(dev, "MDP ctx map after parent resume\n");
 		ret = pm_runtime_resume_and_get(dev->parent);
 		if (ret)
@@ -940,18 +948,12 @@ static int qcom_iommu_ctx_probe(struct platform_device *pdev)
 
 	ctx->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(ctx->base)) {
-		if (of_device_is_compatible(dev->parent->of_node,
-					    "qcom,msm8974-mdp-iommu") ||
-		    of_device_is_compatible(dev->parent->of_node,
-					    "qcom,msm8992-mdp-iommu"))
+		if (qcom_iommu_mdp_mapafter(dev->parent))
 			pm_runtime_put(dev->parent);
 		return PTR_ERR(ctx->base);
 	}
 
-	if (of_device_is_compatible(dev->parent->of_node,
-				    "qcom,msm8974-mdp-iommu") ||
-	    of_device_is_compatible(dev->parent->of_node,
-				    "qcom,msm8992-mdp-iommu"))
+	if (qcom_iommu_mdp_mapafter(dev->parent))
 		pm_runtime_put(dev->parent);
 
 	irq = platform_get_irq(pdev, 0);
@@ -1058,6 +1060,8 @@ static int qcom_iommu_device_probe(struct platform_device *pdev)
 	qcom_iommu->cfg = of_device_get_match_data(dev);
 	if (of_device_is_compatible(dev->of_node, "qcom,msm8992-mdp-iommu"))
 		dev_info(dev, "talkman-iommu: 8992 mdp V7S BFB\n");
+	if (of_device_is_compatible(dev->of_node, "qcom,msm8994-mdp-iommu"))
+		dev_info(dev, "talkman-iommu: 8994 mdp V7S BFB\n");
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res) {
@@ -1354,6 +1358,44 @@ static const struct qcom_iommu_cfg msm8992_mdp_cfg = {
 	.num_bfb = ARRAY_SIZE(msm8992_mdp_bfb),
 };
 
+/*
+ * MSM8994 MDP QSMMU v1. Same programming model as MSM8992.
+ * 3.10 msm8994-iommu.dtsi BFB with the downstream 0x2000 impl-def
+ * bias removed. Board DT keeps the 8994 MDP SMMU map; do not use
+ * the 8992 MDP SMMU addresses. fmt is ARM_V7S (mmo_defconfig
+ * leaves CONFIG_IOMMU_LPAE off).
+ */
+static const struct qcom_iommu_bfb_reg msm8994_mdp_bfb[] = {
+	{ 0x04c, 0x007fffff },
+	{ 0x060, 0x00001777 },
+	{ 0x514, 0x00000000 },
+	{ 0x540, 0x00000004 },
+	{ 0x56c, 0x00000010 },
+	{ 0x0ac, 0x00005000 },
+	{ 0x15c, 0x000182c1 },
+	{ 0x20c, 0x00005a1d },
+	{ 0x2bc, 0x0001822d },
+	{ 0x314, 0x00000000 },
+	{ 0x394, 0x00000000 },
+	{ 0x414, 0x00000028 },
+	{ 0x494, 0x00000068 },
+	{ 0x008, 0x00000000 },
+	{ 0x00c, 0x00000000 },
+	{ 0x010, 0x00000000 },
+	{ 0x014, 0x00000000 },
+	{ 0x018, 0x00000000 },
+};
+
+static const struct qcom_iommu_cfg msm8994_mdp_cfg = {
+	.halt = true,
+	.no_stall = true,
+	.fmt = ARM_V7S,
+	.no_afe = true,
+	.ctx_restore = true,
+	.bfb = msm8994_mdp_bfb,
+	.num_bfb = ARRAY_SIZE(msm8994_mdp_bfb),
+};
+
 static const struct of_device_id qcom_iommu_of_match[] = {
 	{ .compatible = "qcom,msm-iommu-v1" },
 	{ .compatible = "qcom,msm-iommu-v2" },
@@ -1361,6 +1403,7 @@ static const struct of_device_id qcom_iommu_of_match[] = {
 	{ .compatible = "qcom,msm8974-mdp-iommu", .data = &msm8974_mdp_cfg },
 	{ .compatible = "qcom,msm8974-venus-iommu", .data = &msm8974_venus_cfg },
 	{ .compatible = "qcom,msm8992-mdp-iommu", .data = &msm8992_mdp_cfg },
+	{ .compatible = "qcom,msm8994-mdp-iommu", .data = &msm8994_mdp_cfg },
 	{ /* sentinel */ }
 };
 

@@ -8,6 +8,8 @@
 
 #include "msm8994.dtsi"
 #include "msm8994-msft-lumia-octagon.dtsi"
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Microsoft Lumia 950 XL";
@@ -16,15 +18,31 @@
 };
 
 &gpu {
-	status = "okay";
+	status = "disabled";
 };
+&spmi_bus {
+	pmic@3 {
+		labibb {
+			compatible = "qcom,pmi8994-lab-ibb", "qcom,pmi8998-lab-ibb";
 
-&mdss {
-	status = "okay";
-};
+			ibb: ibb {
+				interrupts = <0x3 0xdc 0x2 IRQ_TYPE_EDGE_RISING>,
+					     <0x3 0xdc 0x0 IRQ_TYPE_LEVEL_LOW>;
+				interrupt-names = "sc-err", "ocp";
+				regulator-min-microvolt = <4600000>;
+				regulator-max-microvolt = <6000000>;
+			};
 
-&gpu {
-	status = "okay";
+			lab: lab {
+				interrupts = <0x3 0xde 0x1 IRQ_TYPE_EDGE_RISING>,
+					     <0x3 0xde 0x0 IRQ_TYPE_LEVEL_LOW>;
+				interrupt-names = "sc-err", "ocp";
+				regulator-min-microvolt = <4600000>;
+				regulator-max-microvolt = <6000000>;
+				qcom,soft-start-us = <800>;
+			};
+		};
+	};
 };
 
 &mdss {
@@ -33,23 +51,92 @@
 
 &dsi0 {
 	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
 
 	vdd-supply = <&vreg_l14a_1p8>;
+	vdda-supply = <&vreg_l2a_1p25>;
 	vddio-supply = <&vreg_l12a_1p8>;
+	vcca-supply = <&vreg_l28a_1p0>;
+	//lab_reg-supply = <&lab>;
+	//ibb_reg-supply = <&ibb>;
 
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&mdss_dsi_default &mdss_te_default>;
-	pinctrl-1 = <&mdss_dsi_sleep &mdss_te_default>;
+	pinctrl-1 = <&mdss_dsi_sleep &mdss_te_sleep>;
+
+	qcom,dual-dsi-mode;
+	qcom,master-dsi;
+
+	panel@0 {
+		compatible = "microsoft,sergej-wqhd-cmd";
+		reg = <0>;
+
+		reset-gpios = <&tlmm 78 GPIO_ACTIVE_LOW>;
+
+		/* 3.10 dsi-panel-sergej-wqhd-dualdsi-cmd.dtsi */
+		qcom,mdss-dsi-panel-timings = [97 5A 3E 00 9A 9A 48 5E 4B 03 04 00];
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				sergej_in0: endpoint {
+					remote-endpoint = <&dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				sergej_in1: endpoint {
+					remote-endpoint = <&dsi1_out>;
+				};
+			};
+		};
+	};
 };
 
 &dsi0_out {
-	status = "okay";
-
 	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&sergej_in0>;
 };
 
 &dsi0_phy {
 	status = "okay";
 
+	vddio-supply = <&vreg_l12a_1p8>;
 	vcca-supply = <&vreg_l28a_1p0>;
+
+	qcom,dsi-phy-regulator-ldo-mode;
+};
+
+&dsi1 {
+	status = "okay";
+
+	vdda-supply = <&vreg_l2a_1p25>;
+	vddio-supply = <&vreg_l12a_1p8>;
+	vcca-supply = <&vreg_l28a_1p0>;
+	vdd-supply = <&vreg_l14a_1p8>;
+	//lab_reg-supply = <&lab>;
+	//ibb_reg-supply = <&ibb>;
+
+	qcom,dual-dsi-mode;
+	qcom,sync-dual-dsi;
+
+	assigned-clock-parents = <&dsi0_phy 0>, <&dsi0_phy 1>;
+};
+
+&dsi1_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&sergej_in1>;
+};
+
+&dsi1_phy {
+	status = "okay";
+
+	vddio-supply = <&vreg_l12a_1p8>;
+	vcca-supply = <&vreg_l28a_1p0>;
+	qcom,dsi-phy-regulator-ldo-mode;
 };

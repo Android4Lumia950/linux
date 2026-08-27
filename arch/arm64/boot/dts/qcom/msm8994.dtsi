@@ -1260,7 +1260,7 @@
 
 			mdp: mdp@fd900000 {
 				compatible = "qcom,msm8994-mdp5", "qcom,mdp5";
-				reg = <0xfd900100 0x98000>;
+				reg = <0xfd901000 0x8f000>;
 				reg-names = "mdp_phys";
 
 				interrupt-parent = <&mdss>;
@@ -1425,7 +1425,7 @@
 				compatible = "qcom,dsi-phy-20nm";
 				reg = <0xfd9a0300 0x200>,
 				      <0xfd9a0500 0x280>,
-				      <0xfd9a0780 0x30>;
+				      <0xfd998780 0x30>;
 				reg-names = "dsi_pll",
 					    "dsi_phy",
 					    "dsi_phy_regulator";
@@ -1442,7 +1442,7 @@
 		};
 
 		mdp_iommu: iommu@fd9cc000 {
-			compatible = "qcom,msm8974-mdp-iommu";
+			compatible = "qcom,msm8994-mdp-iommu";
 			reg = <0xfd9cc000 0x2600>;
 			#address-cells = <1>;
 			#size-cells = <1>;

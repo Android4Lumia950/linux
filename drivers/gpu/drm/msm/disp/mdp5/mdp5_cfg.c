@@ -531,6 +531,24 @@ static const struct mdp5_cfg_hw msm8x94_config = {
 		.ib_inefficiency = 100,
 		.clk_inefficiency = 105
 	},
+	/*
+	 * 3.10 mmo msm8994-mdss.dtsi: qcom,mdss-has-source-split only.
+	 * No has-dst-split, no ppb-off, no slave-pingpong-off.
+	 * mdss_mdp_ctl_pp_split_display_enable BUG()s if nppb==0.
+	 * Dual-DSI overlay_init stays MDP_DUAL_LM_DUAL_DISPLAY:
+	 * SPLIT_DISPLAY CMD BIT(1)|BIT(8) without BIT(2), no PPB.
+	 * ppb_ctl=0 distinguishes this from msm8992 dest-split
+	 * (ppb_ctl=0x334). Do not copy msm8992 slave_pp_off 0x2000;
+	 * 8994 last pingpong is 0x71800 from the fd901000 MDP map.
+	 */
+	.pp_split = {
+		.split_display_en = 0x2f4,
+		.split_display_upper = 0x2f8,
+		.split_display_lower = 0x3f0,
+		.ppb_ctl = 0,
+		.ppb_cfg = 0,
+		.slave_pp_off = 0,
+	},
 	.max_clk = 400000000,
 };
 

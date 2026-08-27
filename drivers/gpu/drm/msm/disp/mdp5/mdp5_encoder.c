@@ -221,9 +221,25 @@ static int mdp5_encoder_atomic_check(struct drm_encoder *encoder,
 	struct mdp5_crtc_state *mdp5_cstate = to_mdp5_crtc_state(crtc_state);
 	struct mdp5_interface *intf = mdp5_encoder->intf;
 	struct mdp5_ctl *ctl = mdp5_encoder->ctl;
+	struct mdp5_kms *mdp5_kms = get_kms(encoder);
+	const struct mdp5_cfg_hw *hw =
+		mdp5_cfg_get_hw_config(mdp5_kms->cfg);
 
 	mdp5_cstate->ctl = ctl;
 	mdp5_cstate->pipeline.intf = intf;
+
+	if (mdp5_cmd_dual_lm(hw, intf)) {
+		mdp5_cstate->pipeline.sctl =
+			mdp5_encoder_get_slave_ctl(encoder);
+		mdp5_cstate->pipeline.sintf =
+			mdp5_encoder_get_slave_intf(encoder);
+		if (!mdp5_cstate->pipeline.sctl ||
+		    !mdp5_cstate->pipeline.sintf)
+			return -EINVAL;
+	} else {
+		mdp5_cstate->pipeline.sctl = NULL;
+		mdp5_cstate->pipeline.sintf = NULL;
+	}
 
 	/*
 	 * This is a bit awkward, but we want to flush the CTL and hit the
@@ -304,4 +320,38 @@ struct drm_encoder *mdp5_encoder_init(struct drm_device *dev,
 	drm_encoder_helper_add(encoder, &mdp5_encoder_helper_funcs);
 
 	return encoder;
+}
+
+static struct mdp5_encoder *mdp5_encoder_find_dsi_slave(struct drm_encoder *encoder)
+{
+	struct mdp5_encoder *mdp5_enc = to_mdp5_encoder(encoder);
+	struct drm_encoder *enc;
+	int slave_num = mdp5_enc->intf->num + 1;
+
+	if (mdp5_enc->intf->type != INTF_DSI)
+		return NULL;
+
+	drm_for_each_encoder(enc, encoder->dev) {
+		struct mdp5_encoder *e = to_mdp5_encoder(enc);
+
+		if (e->intf && e->intf->type == INTF_DSI &&
+		    e->intf->num == slave_num)
+			return e;
+	}
+
+	return NULL;
+}
+
+struct mdp5_ctl *mdp5_encoder_get_slave_ctl(struct drm_encoder *encoder)
+{
+	struct mdp5_encoder *slave = mdp5_encoder_find_dsi_slave(encoder);
+
+	return slave ? slave->ctl : NULL;
+}
+
+struct mdp5_interface *mdp5_encoder_get_slave_intf(struct drm_encoder *encoder)
+{
+	struct mdp5_encoder *slave = mdp5_encoder_find_dsi_slave(encoder);
+
+	return slave ? slave->intf : NULL;
 }

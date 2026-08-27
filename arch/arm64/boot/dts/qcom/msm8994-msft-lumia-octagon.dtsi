@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2020, Konrad Dybcio
  * Copyright (c) 2020, Gustave Monce <gustave.monce@outlook.com>
- * Copyright (c) 2024, Girjeu Efim <efim@girj.eu>
+ * Copyright (c) 2026, Girjeu Efim <efim@girj.eu>
  */
 
 #include "pm8994.dtsi"
@@ -326,7 +326,7 @@
 
 		pinctrl-names = "default";
 		pinctrl-0 = <&touch_pins>;
-
+		syna,startup-delay-ms = <60>;
 
 		rmi4-f01@1 {
 			reg = <0x01>;

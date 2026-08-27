@@ -112,6 +112,12 @@ struct mdp5_pipeline {
 	struct mdp5_interface *intf;
 	struct mdp5_hw_mixer *mixer;
 	struct mdp5_hw_mixer *r_mixer;	/* right mixer */
+	/*
+	 * 3.10 MDP_DUAL_LM_DUAL_DISPLAY slave path (msm8x94 cmd dual-DSI).
+	 * NULL on dest-split (ppb_ctl) and on single-INTF source-split.
+	 */
+	struct mdp5_ctl *sctl;
+	struct mdp5_interface *sintf;
 };
 
 struct mdp5_crtc_state {
@@ -156,6 +162,28 @@ struct mdp5_interface {
 	enum mdp5_intf_type type;
 	enum mdp5_intf_mode mode;
 };
+
+/*
+ * MSM8994 cmd dual-DSI is 3.10 MDP_DUAL_LM_DUAL_DISPLAY, not pingpong
+ * dest-split. msm8x94_config keeps SPLIT_DISPLAY_* offsets but leaves
+ * ppb_ctl=0. msm8992_config.ppb_ctl=0x334 stays dest-split.
+ */
+static inline bool mdp5_cmd_dual_lm(const struct mdp5_cfg_hw *hw,
+				    const struct mdp5_interface *intf)
+{
+	if (!hw || !intf)
+		return false;
+	if (!hw->pp_split.split_display_en || hw->pp_split.ppb_ctl)
+		return false;
+	if (intf->type != INTF_DSI ||
+	    intf->mode != MDP5_INTF_DSI_MODE_COMMAND)
+		return false;
+	if (intf->num < 1 || intf->num >= 3)
+		return false;
+	if (hw->intf.connect[intf->num + 1] != INTF_DSI)
+		return false;
+	return true;
+}
 
 struct mdp5_encoder {
 	struct drm_encoder base;
@@ -290,6 +318,8 @@ struct drm_crtc *mdp5_crtc_init(struct drm_device *dev,
 
 struct drm_encoder *mdp5_encoder_init(struct drm_device *dev,
 		struct mdp5_interface *intf, struct mdp5_ctl *ctl);
+struct mdp5_ctl *mdp5_encoder_get_slave_ctl(struct drm_encoder *encoder);
+struct mdp5_interface *mdp5_encoder_get_slave_intf(struct drm_encoder *encoder);
 void mdp5_encoder_set_intf_mode(struct drm_encoder *encoder, bool cmd_mode);
 int mdp5_encoder_get_linecount(struct drm_encoder *encoder);
 u32 mdp5_encoder_get_framecount(struct drm_encoder *encoder);

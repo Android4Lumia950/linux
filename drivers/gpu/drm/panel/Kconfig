@@ -1426,3 +1426,12 @@ config DRM_PANEL_MICROSOFT_DUKE
 	  Sequence from 3.10 dsi-panel-duke-wqhd-dualdsi-cmd.dtsi.
 	  Do not use on Cityman (Sergej).
 
+config DRM_PANEL_MICROSOFT_SERGEJ
+	tristate "Microsoft Lumia 950 XL Sergej dual-DSI command-mode panel"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	help
+	  Sergej 1440p dual-DSI command-mode panel on Cityman (Lumia 950 XL).
+	  Sequence from 3.10 dsi-panel-sergej-wqhd-dualdsi-cmd.dtsi.
+	  Do not use on Talkman (Duke).
+
