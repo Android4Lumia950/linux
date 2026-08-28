@@ -636,8 +636,15 @@
 	};
 };
 
+&mmcc {
+	vdd-gfx-supply = <&vdd_gfx>;
+};
+
 &pmi8994_spmi_regulators {
+	vdd_s2-supply = <&vph_pwr>;
+
 	vdd_gfx: s2 {
+		regulator-name = "VDD_GFX";
 		regulator-min-microvolt = <980000>;
 		regulator-max-microvolt = <980000>;
 	};
@@ -933,6 +940,7 @@
 		compatible = "qcom,rpm-pmi8994-regulators";
 
 		vdd_s1-supply = <&vph_pwr>;
+		vdd_s2-supply = <&vph_pwr>;
 		vdd_bst_byp-supply = <&vph_pwr>;
 
 		vreg_s1b_1p0: s1 {

@@ -743,124 +743,6 @@
 			clocks = <&xo_board>, <&sleep_clk>;
 		};
 
-		gpu: gpu@fdb00000 {
-			/*
-			 * note: the amd,imageon compatible makes it possible
-			 * to use the drm/msm driver without the display node,
-			 * make sure to remove it when display node is added
-			 */
-			compatible = "qcom,adreno-430.0", "qcom,adreno";
-			reg = <0xfdb00000 0x40000>;
-			reg-names = "kgsl_3d0_reg_memory";
-
-			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt-names = "kgsl_3d0_irq";
-
-			clocks = <&mmcc OXILI_GFX3D_CLK>,
-				 <&mmcc OXILICX_AHB_CLK>,
-				 <&mmcc OXILI_RBBMTIMER_CLK>;
-			clock-names = "core",
-				      "iface",
-				      "rbbmtimer";
-
-			sram = <&gmu_sram>;
-			power-domains = <&mmcc OXILI_CX_GDSC>;
-			operating-points-v2 = <&gpu_opp_table>;
-
-			interconnects = <&mmssnoc MNOC_MAS_MDP_PORT0 &bimc BIMC_SLV_EBI_CH0>,
-					<&ovirt OCMEM_MAS_GFX3D &ovirt OCMEM_SLV_OCMEM_GFX>;
-
-			interconnect-names = "gfx-mem", "ocmem";
-
-			iommus = <&gpu_iommu 0>;
-
-			status = "disabled";
-
-			gpu_opp_table: opp-table {
-				compatible = "operating-points-v2";
-				opp-600000000 {
-					opp-hz = /bits/ 64 <600000000>;
-				};
-				opp-400000000 {
-					opp-hz = /bits/ 64 <400000000>;
-				};
-				opp-300000000 {
-					opp-hz = /bits/ 64 <300000000>;
-				};
-				opp-150000000 {
-					opp-hz = /bits/ 64 <150000000>;
-				};
-				opp-27000000 {
-					opp-hz = /bits/ 64 <27000000>;
-				};
-			};
-		};
-
-
-		gpu_iommu: iommu@fdb10000 {
-			compatible = "qcom,msm8974-gpu-iommu";
-			reg = <0xfdb10000 0x2600>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-			#iommu-cells = <1>;
-			ranges = <0 0xfdb18000 0x2000>;
-
-			clocks = <&mmcc OXILICX_AHB_CLK>,
-				 <&mmcc OXILICX_AXI_CLK>,
-				 <&mmcc OXILI_GFX3D_CLK>;
-			clock-names = "iface", "bus", "tbu";
-			power-domains = <&mmcc OXILI_CX_GDSC>;
-
-			/* GFX3D_USER */
-			iommu-ctx@0 {
-				compatible = "qcom,msm-iommu-v1-ns";
-				reg = <0x0 0x1000>;
-				interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>;
-			};
-
-			/* GFX3D_PRIV */
-			iommu-ctx@1000 {
-				compatible = "qcom,msm-iommu-v1-ns";
-				reg = <0x1000 0x1000>;
-				interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>;
-			};
-		};
-
-		venus_iommu: iommu@fdc84000 {
-			compatible = "qcom,msm8974-venus-iommu";
-			reg = <0xfdc84000 0x2600>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-			#iommu-cells = <1>;
-			ranges = <0 0xfdc8c000 0x3000>;
-
-			clocks = <&mmcc VENUS0_AHB_CLK>,
-				 <&mmcc VENUS0_AXI_CLK>,
-				 <&mmcc VENUS0_VCODEC0_CLK>;
-			clock-names = "iface", "bus", "tbu";
-			power-domains = <&mmcc VENUS_GDSC>;
-			qcom,iommu-secure-id = <0>;
-
-			/* VENUS_NS */
-			iommu-ctx@0 {
-				compatible = "qcom,msm-iommu-v1-ns";
-				reg = <0x0 0x1000>;
-				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
-			};
-			/* VENUS_CP */
-			iommu-ctx@1000 {
-				compatible = "qcom,msm-iommu-v1-sec";
-				reg = <0x1000 0x1000>;
-				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
-			};
-			/* VENUS_FW */
-			iommu-ctx@2000 {
-				compatible = "qcom,msm-iommu-v1-sec";
-				reg = <0x2000 0x1000>;
-				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
-			};
-		};
-
 		rpm_msg_ram: sram@fc428000 {
 			compatible = "qcom,rpm-msg-ram";
 			reg = <0xfc428000 0x4000>;
@@ -1193,6 +1075,38 @@
 				bias-pull-up;
 				drive-strength = <2>;
 			};
+			cci_default: cci-default-state {
+				cci_i2c0_default: cci-i2c0-default-pins {
+					pins = "gpio17", "gpio18";
+					function = "cci_i2c0";
+					drive-strength = <2>;
+					bias-disable;
+				};
+
+				cci_i2c1_default: cci-i2c1-default-pins {
+					pins = "gpio19", "gpio20";
+					function = "cci_i2c1";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+
+			cci_sleep: cci-sleep-state {
+				cci_i2c0_sleep: cci-i2c0-sleep-pins {
+					pins = "gpio17", "gpio18";
+					function = "gpio";
+					drive-strength = <2>;
+					bias-disable;
+				};
+
+				cci_i2c1_sleep: cci-i2c1-sleep-pins {
+					pins = "gpio19", "gpio20";
+					function = "gpio";
+					drive-strength = <2>;
+					bias-disable;
+				};
+			};
+
 		};
 
 		mmcc: clock-controller@fd8c0000 {
@@ -1203,23 +1117,23 @@
 			#power-domain-cells = <1>;
 
 			clock-names = "xo",
-					"gpll0",
-					"mmssnoc_ahb",
-					"oxili_gfx3d_clk_src",
-					"dsi0pll",
-					"dsi0pllbyte",
-					"dsi1pll",
-					"dsi1pllbyte",
-					"hdmipll";
+				      "gpll0",
+				      "mmssnoc_ahb",
+				      "oxili_gfx3d_clk_src",
+				      "dsi0pll",
+				      "dsi0pllbyte",
+				      "dsi1pll",
+				      "dsi1pllbyte",
+				      "hdmipll";
 			clocks = <&xo_board>,
-					<&gcc GPLL0_OUT_MMSSCC>,
-					<&rpmcc RPM_SMD_MMSSNOC_AHB_CLK>,
-					<&rpmcc RPM_SMD_GFX3D_CLK_SRC>,
-					<&dsi0_phy 1>,
-					<&dsi0_phy 0>,
-					<&dsi1_phy 1>,
-					<&dsi1_phy 0>,
-					<0>;
+				<&gcc GPLL0_OUT_MMSSCC>,
+				<&rpmcc RPM_SMD_MMSSNOC_AHB_CLK>,
+				<&rpmcc RPM_SMD_GFX3D_CLK_SRC>,
+				<&dsi0_phy 1>,
+				<&dsi0_phy 0>,
+				<&dsi1_phy 1>,
+				<&dsi1_phy 0>,
+				<0>;
 
 			assigned-clocks = <&mmcc MMPLL0_PLL>,
 					  <&mmcc MMPLL1_PLL>,
@@ -1438,6 +1352,123 @@
 				clock-names = "iface", "ref";
 
 				status = "disabled";
+			};
+		};
+
+		gpu: gpu@fdb00000 {
+			/*
+			 * note: the amd,imageon compatible makes it possible
+			 * to use the drm/msm driver without the display node,
+			 * make sure to remove it when display node is added
+			 */
+			compatible = "qcom,adreno-430.0", "qcom,adreno";
+			reg = <0xfdb00000 0x40000>;
+			reg-names = "kgsl_3d0_reg_memory";
+
+			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "kgsl_3d0_irq";
+
+			clocks = <&mmcc OXILI_GFX3D_CLK>,
+				 <&mmcc OXILICX_AHB_CLK>,
+				 <&mmcc OXILI_RBBMTIMER_CLK>;
+			clock-names = "core",
+				      "iface",
+				      "rbbmtimer";
+
+			sram = <&gmu_sram>;
+			power-domains = <&mmcc OXILI_GX_GDSC>;
+			operating-points-v2 = <&gpu_opp_table>;
+
+			interconnects = <&mmssnoc MNOC_MAS_MDP_PORT0 &bimc BIMC_SLV_EBI_CH0>,
+					<&ovirt OCMEM_MAS_GFX3D &ovirt OCMEM_SLV_OCMEM_GFX>;
+
+			interconnect-names = "gfx-mem", "ocmem";
+
+			//iommus = <&gpu_iommu 0>;
+
+			status = "disabled";
+
+			gpu_opp_table: opp-table {
+				compatible = "operating-points-v2";
+				opp-600000000 {
+					opp-hz = /bits/ 64 <600000000>;
+				};
+				opp-400000000 {
+					opp-hz = /bits/ 64 <400000000>;
+				};
+				opp-300000000 {
+					opp-hz = /bits/ 64 <300000000>;
+				};
+				opp-150000000 {
+					opp-hz = /bits/ 64 <150000000>;
+				};
+				opp-27000000 {
+					opp-hz = /bits/ 64 <27000000>;
+				};
+			};
+		};
+
+
+		gpu_iommu: iommu@fdb10000 {
+			compatible = "qcom,msm8974-gpu-iommu";
+			reg = <0xfdb10000 0x2600>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			#iommu-cells = <1>;
+			ranges = <0 0xfdb18000 0x2000>;
+
+			clocks = <&mmcc OXILICX_AHB_CLK>,
+				 <&mmcc OXILI_GFX3D_CLK>;
+			clock-names = "iface", "bus";
+			power-domains = <&mmcc OXILI_CX_GDSC>;
+			qcom,iommu-secure-id = <18>;
+			/* GFX3D_USER */
+			iommu-ctx@0 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x0 0x1000>;
+				interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>;
+			};
+
+			/* GFX3D_PRIV */
+			iommu-ctx@1000 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x1000 0x1000>;
+				interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>;
+			};
+		};
+
+		venus_iommu: iommu@fdc84000 {
+			compatible = "qcom,msm8974-venus-iommu";
+			reg = <0xfdc84000 0x2600>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			#iommu-cells = <1>;
+			ranges = <0 0xfdc8c000 0x3000>;
+
+			clocks = <&mmcc VENUS0_AHB_CLK>,
+				 <&mmcc VENUS0_AXI_CLK>,
+				 <&mmcc VENUS0_VCODEC0_CLK>;
+			clock-names = "iface", "bus", "tbu";
+			power-domains = <&mmcc VENUS_GDSC>;
+			qcom,iommu-secure-id = <0>;
+
+			/* VENUS_NS */
+			iommu-ctx@0 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x0 0x1000>;
+				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
+			};
+			/* VENUS_CP */
+			iommu-ctx@1000 {
+				compatible = "qcom,msm-iommu-v1-sec";
+				reg = <0x1000 0x1000>;
+				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
+			};
+			/* VENUS_FW */
+			iommu-ctx@2000 {
+				compatible = "qcom,msm-iommu-v1-sec";
+				reg = <0x2000 0x1000>;
+				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
 			};
 		};
 

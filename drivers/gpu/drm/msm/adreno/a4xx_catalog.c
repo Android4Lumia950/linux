@@ -33,6 +33,17 @@ static const struct adreno_info a4xx_gpus[] = {
 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
 		.funcs = &a4xx_gpu_funcs,
 	}, {
+		.chip_ids = ADRENO_CHIP_IDS(0x04030000),
+		.family = ADRENO_4XX,
+		.revn  = 430,
+		.fw = {
+			[ADRENO_FW_PM4] = "a420_pm4.fw",
+			[ADRENO_FW_PFP] = "a420_pfp.fw",
+		},
+		.gmem  = (SZ_1M + SZ_512K),
+		.inactive_period = DRM_MSM_INACTIVE_PERIOD,
+		.funcs = &a4xx_gpu_funcs,
+	}, {
 		.chip_ids = ADRENO_CHIP_IDS(0x04030002),
 		.family = ADRENO_4XX,
 		.revn  = 430,

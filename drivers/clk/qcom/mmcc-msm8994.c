@@ -2149,22 +2149,6 @@ static struct clk_branch oxilicx_ahb_clk = {
 	},
 };
 
-static struct clk_branch oxilicx_axi_clk = {
-	.halt_reg = 0x4038,
-	.clkr = {
-		.enable_reg = 0x4038,
-		.enable_mask = BIT(0),
-		.hw.init = &(struct clk_init_data){
-			.name = "oxilicx_axi_clk",
-			.parent_hws = (const struct clk_hw*[]){
-				&axi_clk_src.clkr.hw
-			},
-			.num_parents = 1,
-			.ops = &clk_branch2_ops,
-		},
-	},
-};
-
 static struct clk_branch venus0_ahb_clk = {
 	.halt_reg = 0x1030,
 	.clkr = {
@@ -2394,7 +2378,7 @@ static struct gdsc oxili_gx_gdsc = {
 	.pwrsts = PWRSTS_OFF_ON,
 	.parent = &oxili_cx_gdsc.pd,
 	.flags = CLAMP_IO,
-	.supply = "VDD_GFX",
+	.supply = "vdd-gfx",
 };
 
 static struct clk_regmap *mmcc_msm8994_clocks[] = {
@@ -2518,7 +2502,6 @@ static struct clk_regmap *mmcc_msm8994_clocks[] = {
 	[OXILI_GFX3D_CLK] = &oxili_gfx3d_clk.clkr,
 	[OXILI_RBBMTIMER_CLK] = &oxili_rbbmtimer_clk.clkr,
 	[OXILICX_AHB_CLK] = &oxilicx_ahb_clk.clkr,
-	[OXILICX_AXI_CLK] = &oxilicx_axi_clk.clkr,
 	[VENUS0_AHB_CLK] = &venus0_ahb_clk.clkr,
 	[VENUS0_AXI_CLK] = &venus0_axi_clk.clkr,
 	[VENUS0_OCMEMNOC_CLK] = &venus0_ocmemnoc_clk.clkr,
