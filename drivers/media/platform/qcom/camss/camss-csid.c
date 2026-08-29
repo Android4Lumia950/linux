@@ -634,7 +634,8 @@ u32 csid_hw_version(struct csid_device *csid)
 u32 csid_src_pad_code(struct csid_device *csid, u32 sink_code,
 		      unsigned int match_format_idx, u32 match_code)
 {
-	if (csid->camss->res->version == CAMSS_8x16) {
+	if (csid->camss->res->version == CAMSS_8x16||
+		csid->camss->res->version == CAMSS_8x94) {
 		if (match_format_idx > 0)
 			return 0;
 

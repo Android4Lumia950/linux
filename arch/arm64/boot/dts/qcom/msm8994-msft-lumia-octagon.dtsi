@@ -247,67 +247,146 @@
 };
 
 
-/*
- * When cci_i2c buses are brought up,
- * 3 camera sensors need to be added as follows:
- *
- * &cci_i2c0 {
- *  // H1400/1 Ducati (FF CAM FPC) (Front) (Sharp)
- *	ffc_sensor: ffc-sensor@20 {
- *		compatible = "nokia,smia";
- *
- *		reg = <0x20>;
- *
- *		reset-gpios = <&tlmm 104 GPIO_ACTIVE_HIGH>;
- *		vana-supply = <&vreg_l17a_2p7>;
- *
- *		clocks = <&CAM_MCLK2 0>;
- *		clock-frequency = <xxxxxx>;
- *		...
- *	};
- *
- *  // H1000/1 Siiri (IRIS CAM FPC) (Iris) (Toshiba) (T4KE1)
- *	iris_sensor: iris-sensor@6c {
- *		compatible = "nokia,smia";
- *
- *		reg = <0x6c>;
- *
- *		reset-gpios = <&tlmm 102 GPIO_ACTIVE_HIGH>;
- *		vana-supply = <&vreg_l17a_2p7>;
- *
- *		clocks = <&CAM_MCLK1 0>;
- *		clock-frequency = <xxxxxx>;
- *		...
- *	};
- *
- * Also on the same bus:
- * Austrianmicrosystems AS3638 triple LED flash controller (No driver available)
- * };
- *
- * &cci_i2c1 {
- *  // N1400/1 Hill (Sub board FPC) (Rear) (Sony) (IMX230)
- *	rfc_sensor: rfc-sensor@20 {
- *		compatible = "nokia,smia";
- *
- *		reg = <0x20>;
- *
- *		reset-gpios = <&tlmm 106 GPIO_ACTIVE_HIGH>; // This is either 105 or 106
- *		vana-supply = <&vreg_l29a_2p8>;
- *
- *		clocks = <&CAM_MCLK0 0>;
- *		clock-frequency = <xxxxxx>;
- *		link-frequencies = ...;
- *
- *		port {
- *			smiapp_ep: endpoint {
- *				data-lanes = <... ...>;
- *				remote-endpoint = <&...>;
- *			};
- *		};
- *	};
- * };
- */
+&cci {
+	status = "okay";
+};
 
+&cci_i2c0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	// H1400/1 Ducati (FF CAM FPC) (Front) (Sharp)
+	ffc_sensor@20 {
+		compatible = "nokia,smia";
+		reg = <0x20>;
+
+		vana-supply = <&vreg_l17a_2p7>;
+		vio-supply = <&vreg_lvs1a_1p8>;
+
+		clocks = <&mmcc CAMSS_MCLK2_CLK>;
+		clock-frequency = <19200000>;
+
+		reset-gpios = <&tlmm 104 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&camera_front_default>;
+		pinctrl-1 = <&camera_front_sleep>;
+
+		port {
+			smiapp_ffc_ep: endpoint {
+				clock-lanes = <1>;
+				data-lanes = <0 2 3 4>;
+				link-frequencies = /bits/ 64 <342000000>;
+				bus-type = <4>;
+				remote-endpoint = <&csiphy2_ep2>;
+			};
+		};
+	};
+
+	/* Iris Sensor */
+	iris_sensor@6c {
+		compatible = "nokia,smia";
+		reg = <0x6c>;
+
+		vana-supply = <&vreg_l17a_2p7>;
+		vio-supply = <&vreg_lvs1a_1p8>;
+		vcore-supply = <&vreg_l3a_1p2>;
+
+		clocks = <&mmcc CAMSS_MCLK1_CLK>;
+		clock-frequency = <19200000>;
+
+		reset-gpios = <&tlmm 102 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&camera_iris_default>;
+		pinctrl-1 = <&camera_iris_sleep>;
+
+		port {
+			smiapp_iris_ep: endpoint {
+				clock-lanes = <1>;
+				data-lanes = <0 2 3 4>;
+				link-frequencies = /bits/ 64 <342000000>;
+				bus-type = <4>;
+				remote-endpoint = <&csiphy2_ep3>;
+			};
+		};
+	};
+};
+
+&cci_i2c1 {
+	/* Rear Camera - Hill */
+	rfc_sensor@20 {
+		compatible = "nokia,smia";
+		reg = <0x20>;
+
+		vana-supply = <&vreg_l29a_2p8>;
+		vio-supply = <&vreg_l23a_2p8>;
+		vcore-supply = <&vreg_l25a_1p1>;
+
+		clocks = <&mmcc CAMSS_MCLK0_CLK>;
+		clock-frequency = <19200000>;
+
+		reset-gpios = <&tlmm 92 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&camera_rear_default>;
+		pinctrl-1 = <&camera_rear_sleep>;
+
+		port {
+			smiapp_rfc_ep: endpoint {
+				clock-lanes = <1>;
+				data-lanes = <0 2 3 4>;
+				link-frequencies = /bits/ 64 <342000000>;
+				bus-type = <4>;
+				remote-endpoint = <&csiphy0_ep>;
+			};
+		};
+	};
+};
+
+&camss {
+	status = "okay";
+
+	vdda-supply = <&vreg_l2a_1p25>;
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		/* CSIPHY0 -> Rear Sensor (csid-sd-index = 0) */
+		port@0 {
+			reg = <0>;
+
+			csiphy0_ep: endpoint {
+				clock-lanes = <1>;
+				data-lanes = <0 2 3 4>;
+				remote-endpoint = <&smiapp_rfc_ep>;
+			};
+		};
+
+		/* CSIPHY2 -> Front Sensor (csid-sd-index = 2) */
+		port@2 {
+			reg = <2>;
+
+			csiphy2_ep2: endpoint {
+				clock-lanes = <1>;
+				data-lanes = <0 2 3 4>;
+				remote-endpoint = <&smiapp_ffc_ep>;
+			};
+		};
+
+		/* CSIPHY2 -> Iris Sensor (csid-sd-index = 3) */
+		port@3 {
+			reg = <3>;
+
+			csiphy2_ep3: endpoint {
+				clock-lanes = <1>;
+				data-lanes = <0 2 3 4>;
+				remote-endpoint = <&smiapp_iris_ep>;
+			};
+		};
+	};
+};
 
 &blsp1_i2c1 {
 	status = "okay";
@@ -1126,6 +1205,111 @@
 		"RFFE2_DATA", /* GPIO_139 */
 		"RFFE3_CLK", /* GPIO_140 */
 		"RFFE3_DATA"; /* GPIO_141 */
+
+	/*
+	 * Rear Camera Pins (MCLK0: GPIO 13 | Standby: GPIO 91 | Reset: GPIO 92)
+	 */
+	camera_rear_default: camera-rear-default-state {
+		mclk-pins {
+			pins = "gpio13";
+			function = "cam_mclk0";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		gpio-pins {
+			pins = "gpio91", "gpio92";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+
+	camera_rear_sleep: camera-rear-sleep-state {
+		mclk-pins {
+			pins = "gpio13";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+
+		gpio-pins {
+			pins = "gpio91", "gpio92";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+
+	/*
+	 * Front Camera Pins (MCLK1: GPIO 14 | Reset: GPIO 104 | Standby: GPIO 105)
+	 */
+	camera_front_default: camera-front-default-state {
+		mclk-pins {
+			pins = "gpio14";
+			function = "cam_mclk1";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		gpio-pins {
+			pins = "gpio104", "gpio105";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+
+	camera_front_sleep: camera-front-sleep-state {
+		mclk-pins {
+			pins = "gpio14";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+
+		gpio-pins {
+			pins = "gpio104", "gpio105";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
+
+	/*
+	 * Iris Camera Pins (MCLK2: GPIO 15 | Reset: GPIO 102 | Standby: GPIO 106)
+	 */
+	camera_iris_default: camera-iris-default-state {
+		mclk-pins {
+			pins = "gpio15";
+			function = "cam_mclk2";
+			drive-strength = <2>;
+			bias-disable;
+		};
+
+		gpio-pins {
+			pins = "gpio102", "gpio106";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+
+	camera_iris_sleep: camera-iris-sleep-state {
+		mclk-pins {
+			pins = "gpio15";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+
+		gpio-pins {
+			pins = "gpio102", "gpio106";
+			function = "gpio";
+			drive-strength = <2>;
+			bias-pull-down;
+		};
+	};
 
 	touch_pins: touch {
 		irq {

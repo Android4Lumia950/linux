@@ -52,6 +52,8 @@ enum qcom_iommu_clk {
 	CLK_IFACE,
 	CLK_BUS,
 	CLK_TBU,
+	CLK_ALT_IFACE,
+	CLK_ALT_BUS,
 	CLK_NUM,
 };
 
@@ -1093,6 +1095,20 @@ static int qcom_iommu_device_probe(struct platform_device *pdev)
 	}
 	qcom_iommu->clks[CLK_BUS].clk = clk;
 
+	clk = devm_clk_get_optional(dev, "alt_iface");
+	if (IS_ERR(clk)) {
+		dev_err(dev, "failed to get alt_iface clock\n");
+		return PTR_ERR(clk);
+	}
+	qcom_iommu->clks[CLK_ALT_IFACE].clk = clk;
+
+	clk = devm_clk_get_optional(dev, "alt_bus");
+	if (IS_ERR(clk)) {
+		dev_err(dev, "failed to get alt_bus clock\n");
+		return PTR_ERR(clk);
+	}
+	qcom_iommu->clks[CLK_ALT_BUS].clk = clk;
+
 	clk = devm_clk_get_optional(dev, "tbu");
 	if (IS_ERR(clk)) {
 		dev_err(dev, "failed to get tbu clock\n");
@@ -1395,6 +1411,35 @@ static const struct qcom_iommu_cfg msm8994_mdp_cfg = {
 	.bfb = msm8994_mdp_bfb,
 	.num_bfb = ARRAY_SIZE(msm8994_mdp_bfb),
 };
+static const struct qcom_iommu_bfb_reg msm8994_vfe_bfb[] = {
+	{ 0x04c, 0x000fffff },
+	{ 0x060, 0x00001555 },
+	{ 0x514, 0x00000000 },
+	{ 0x540, 0x00000004 },
+	{ 0x56c, 0x00002400 },
+	{ 0x0ac, 0x00008844 },
+	{ 0x15c, 0x00002400 },
+	{ 0x20c, 0x00008812 },
+	{ 0x2bc, 0x00000000 },
+	{ 0x314, 0x00000000 },
+	{ 0x394, 0x00000000 },
+	{ 0x414, 0x00000012 },
+	{ 0x494, 0x0000005a },
+	{ 0x008, 0x00000000 },
+	{ 0x00c, 0x00000000 },
+	{ 0x010, 0x00000000 },
+	{ 0x014, 0x00000000 },
+};
+
+static const struct qcom_iommu_cfg msm8994_vfe_cfg = {
+	.halt = true,
+	.no_stall = true,
+	.fmt = ARM_V7S,
+	.no_afe = true,
+	.ctx_restore = true,
+	.bfb = msm8994_vfe_bfb,
+	.num_bfb = ARRAY_SIZE(msm8994_vfe_bfb),
+};
 
 static const struct of_device_id qcom_iommu_of_match[] = {
 	{ .compatible = "qcom,msm-iommu-v1" },
@@ -1404,6 +1449,7 @@ static const struct of_device_id qcom_iommu_of_match[] = {
 	{ .compatible = "qcom,msm8974-venus-iommu", .data = &msm8974_venus_cfg },
 	{ .compatible = "qcom,msm8992-mdp-iommu", .data = &msm8992_mdp_cfg },
 	{ .compatible = "qcom,msm8994-mdp-iommu", .data = &msm8994_mdp_cfg },
+	{ .compatible = "qcom,msm8994-vfe-iommu", .data = &msm8994_vfe_cfg },
 	{ /* sentinel */ }
 };
 

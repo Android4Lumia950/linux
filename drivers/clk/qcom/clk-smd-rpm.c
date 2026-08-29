@@ -212,15 +212,10 @@ static int clk_smd_rpm_handoff(const struct clk_smd_rpm *r)
 			req.value = cpu_to_le32(DIV_ROUND_UP(19200000, 1000));
 	}
 
-	pr_info("talkman-rpmcc: handoff type=0x%08x id=%u branch=%u val=%u\n",
-		r->rpm_res_type, r->rpm_clk_id, r->branch,
-		le32_to_cpu(req.value));
 	ret = qcom_rpm_smd_write(rpmcc_smd_rpm, QCOM_SMD_RPM_ACTIVE_STATE,
 				 r->rpm_res_type, r->rpm_clk_id, &req,
 				 sizeof(req));
 	if (ret) {
-		pr_err("talkman-rpmcc: handoff ACTIVE fail type=0x%08x id=%u ret=%d\n",
-		       r->rpm_res_type, r->rpm_clk_id, ret);
 		return ret;
 	}
 	if (rpmcc_defer_sleep_set)
@@ -1397,14 +1392,12 @@ static int rpm_smd_clk_probe(struct platform_device *pdev)
 	 * Mainline otherwise hands off every clock before scaling.
 	 */
 	if (rpmcc_defer_sleep_set) {
-		pr_info("talkman-rpmcc: 8992 vote BIMC then enable_scaling\n");
 		ret = clk_smd_rpm_handoff(&clk_smd_rpm_bimc_clk);
 		if (ret)
 			goto err;
 		ret = clk_smd_rpm_enable_scaling();
 		if (ret)
 			goto err;
-		pr_info("talkman-rpmcc: enable_scaling ok, handoff remaining\n");
 	} else if (desc->scaling_before_handover) {
 		ret = clk_smd_rpm_enable_scaling();
 		if (ret)

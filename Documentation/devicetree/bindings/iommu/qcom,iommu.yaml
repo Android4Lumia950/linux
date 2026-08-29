@@ -36,6 +36,7 @@ properties:
           - qcom,msm8974-venus-iommu
           - qcom,msm8992-mdp-iommu
           - qcom,msm8994-mdp-iommu
+          - qcom,msm8994-vfe-iommu
 
   clocks:
     minItems: 2
