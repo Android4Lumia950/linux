@@ -14,3 +14,13 @@
 	compatible = "microsoft,cityman", "qcom,msm8994";
 	chassis-type = "handset";
 };
+
+/*
+ * 3.10 msm8994-iommu.dtsi: MDP SMMU 0xfd9cc000, ctx0 0xfd9d4000.
+ * Same relative layout as Talkman (+0x8000), different physical base.
+ * Untested here; driver resume-before-ioremap is the same as 8992.
+ */
+&mdp_iommu {
+	reg = <0xfd9cc000 0x2600>;
+	ranges = <0 0xfd9d4000 0x3000>;
+};

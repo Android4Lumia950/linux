@@ -1151,10 +1151,9 @@ static vm_fault_t dmirror_devmem_fault_alloc_and_copy(struct migrate_vma *args,
 		if (!dpage && !order)
 			return VM_FAULT_OOM;
 
-		pr_debug("migrating from sys to dev pfn src: 0x%lx pfn dst: 0x%lx\n",
-				page_to_pfn(spage), page_to_pfn(dpage));
-
 		if (dpage) {
+			pr_debug("migrating from dev to sys pfn src: 0x%lx pfn dst: 0x%lx\n",
+					page_to_pfn(spage), page_to_pfn(dpage));
 			lock_page(dpage);
 			*dst |= migrate_pfn(page_to_pfn(dpage));
 		}
@@ -1312,16 +1311,10 @@ static int dmirror_migrate_to_device(struct dmirror *dmirror,
 	if (!mmget_not_zero(mm))
 		return -EINVAL;
 
-	ret = -ENOMEM;
 	src_pfns = kvcalloc(PTRS_PER_PTE, sizeof(*src_pfns),
 			  GFP_KERNEL | __GFP_NOFAIL);
-	if (!src_pfns)
-		goto free_mem;
-
 	dst_pfns = kvcalloc(PTRS_PER_PTE, sizeof(*dst_pfns),
 			  GFP_KERNEL | __GFP_NOFAIL);
-	if (!dst_pfns)
-		goto free_mem;
 
 	ret = 0;
 	mmap_read_lock(mm);

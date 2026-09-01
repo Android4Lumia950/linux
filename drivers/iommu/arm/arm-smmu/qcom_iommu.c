@@ -922,9 +922,31 @@ static int qcom_iommu_ctx_probe(struct platform_device *pdev)
 	ctx->dev = dev;
 	platform_set_drvdata(pdev, ctx);
 
+	/*
+	 * MDP QSMMU v1 SoC-resets if the context bank is ioremapped
+	 * before the parent is runtime-resumed (MDSS GDSC + clocks).
+	 * Talkman ctx is 0xfd9bc000; Cityman is 0xfd9d4000. GPU/Venus
+	 * ctxs do not need this.
+	 */
+	if (of_device_is_compatible(dev->parent->of_node,
+				    "qcom,msm8974-mdp-iommu")) {
+		dev_info(dev, "MDP ctx map after parent resume\n");
+		ret = pm_runtime_resume_and_get(dev->parent);
+		if (ret)
+			return ret;
+	}
+
 	ctx->base = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(ctx->base))
+	if (IS_ERR(ctx->base)) {
+		if (of_device_is_compatible(dev->parent->of_node,
+					    "qcom,msm8974-mdp-iommu"))
+			pm_runtime_put(dev->parent);
 		return PTR_ERR(ctx->base);
+	}
+
+	if (of_device_is_compatible(dev->parent->of_node,
+				    "qcom,msm8974-mdp-iommu"))
+		pm_runtime_put(dev->parent);
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
