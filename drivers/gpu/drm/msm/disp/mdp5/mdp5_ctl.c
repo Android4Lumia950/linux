@@ -121,6 +121,53 @@ static void set_display_intf(struct mdp5_kms *mdp5_kms,
 	spin_unlock_irqrestore(&mdp5_kms->resource_lock, flags);
 }
 
+static bool mdp5_cmd_split_display(struct mdp5_kms *mdp5_kms,
+				   struct mdp5_interface *intf)
+{
+	const struct mdp5_cfg_hw *hw;
+	struct mdp5_interface slave = { };
+	u32 lower, cfg;
+	bool dest_split;
+
+	if (intf->type != INTF_DSI ||
+	    intf->mode != MDP5_INTF_DSI_MODE_COMMAND)
+		return false;
+
+	hw = mdp5_cfg_get_hw_config(mdp5_kms->cfg);
+	if (!hw || !hw->pp_split.split_display_en)
+		return false;
+	if (intf->num < 1 || intf->num >= 3)
+		return false;
+	if (hw->intf.connect[intf->num + 1] != INTF_DSI)
+		return false;
+
+	slave.num = intf->num + 1;
+	slave.type = INTF_DSI;
+	slave.mode = MDP5_INTF_DSI_MODE_COMMAND;
+	set_display_intf(mdp5_kms, &slave);
+
+	lower = BIT(1);
+	if (intf->num == 2)
+		lower |= BIT(4);
+	else
+		lower |= BIT(8);
+
+	dest_split = hw->pp_split.ppb_ctl != 0;
+	if (dest_split)
+		lower |= BIT(2);
+
+	mdp5_write(mdp5_kms, hw->pp_split.split_display_upper, lower);
+	mdp5_write(mdp5_kms, hw->pp_split.split_display_lower, lower);
+	mdp5_write(mdp5_kms, hw->pp_split.split_display_en, 1);
+
+	if (dest_split) {
+		cfg = ((u32)slave.num << 20) | BIT(16);
+		mdp5_write(mdp5_kms, hw->pp_split.ppb_cfg, cfg);
+		mdp5_write(mdp5_kms, hw->pp_split.ppb_ctl, BIT(5));
+	}
+	return true;
+}
+
 static void set_ctl_op(struct mdp5_ctl *ctl, struct mdp5_pipeline *pipeline)
 {
 	unsigned long flags;
@@ -145,9 +192,14 @@ static void set_ctl_op(struct mdp5_ctl *ctl, struct mdp5_pipeline *pipeline)
 		break;
 	}
 
-	if (pipeline->r_mixer)
-		ctl_op |= MDP5_CTL_OP_PACK_3D_ENABLE |
-			  MDP5_CTL_OP_PACK_3D(1);
+	if (pipeline->r_mixer) {
+		const struct mdp5_cfg_hw *hw =
+			mdp5_cfg_get_hw_config(get_kms(ctl->ctlm)->cfg);
+
+		if (!mdp5_cmd_dual_lm(hw, intf))
+			ctl_op |= MDP5_CTL_OP_PACK_3D_ENABLE |
+				  MDP5_CTL_OP_PACK_3D(1);
+	}
 
 	spin_lock_irqsave(&ctl->hw_lock, flags);
 	ctl_write(ctl, REG_MDP5_CTL_OP(ctl->id), ctl_op);
@@ -163,7 +215,18 @@ int mdp5_ctl_set_pipeline(struct mdp5_ctl *ctl, struct mdp5_pipeline *pipeline)
 	if (!mdp5_cfg_intf_is_virtual(intf->type))
 		set_display_intf(mdp5_kms, intf);
 
+	mdp5_cmd_split_display(mdp5_kms, intf);
+
 	set_ctl_op(ctl, pipeline);
+
+	if (pipeline->sctl && pipeline->sintf && pipeline->r_mixer) {
+		struct mdp5_pipeline slave = {
+			.intf = pipeline->sintf,
+			.mixer = pipeline->r_mixer,
+		};
+
+		set_ctl_op(pipeline->sctl, &slave);
+	}
 
 	return 0;
 }
@@ -224,9 +287,13 @@ int mdp5_ctl_set_encoder_state(struct mdp5_ctl *ctl,
 	ctl->encoder_enabled = enabled;
 	DBG("intf_%d: %s", intf->num, str_on_off(enabled));
 
-	if (start_signal_needed(ctl, pipeline)) {
+	if (pipeline->sctl)
+		pipeline->sctl->encoder_enabled = enabled;
+
+	if (start_signal_needed(ctl, pipeline))
 		send_start_signal(ctl);
-	}
+	if (pipeline->sctl && start_signal_needed(pipeline->sctl, pipeline))
+		send_start_signal(pipeline->sctl);
 
 	return 0;
 }
@@ -382,7 +449,7 @@ int mdp5_ctl_blend(struct mdp5_ctl *ctl, struct mdp5_pipeline *pipeline,
 	ctl_write(ctl, REG_MDP5_CTL_LAYER_REG(ctl->id, mixer->lm), blend_cfg);
 	ctl_write(ctl, REG_MDP5_CTL_LAYER_EXT_REG(ctl->id, mixer->lm),
 		  blend_ext_cfg);
-	if (r_mixer) {
+	if (r_mixer && !pipeline->sctl) {
 		ctl_write(ctl, REG_MDP5_CTL_LAYER_REG(ctl->id, r_mixer->lm),
 			  r_blend_cfg);
 		ctl_write(ctl, REG_MDP5_CTL_LAYER_EXT_REG(ctl->id, r_mixer->lm),
@@ -390,8 +457,23 @@ int mdp5_ctl_blend(struct mdp5_ctl *ctl, struct mdp5_pipeline *pipeline,
 	}
 	spin_unlock_irqrestore(&ctl->hw_lock, flags);
 
+	if (r_mixer && pipeline->sctl) {
+		struct mdp5_ctl *sctl = pipeline->sctl;
+		unsigned long sflags;
+
+		mdp5_ctl_reset_blend_regs(sctl);
+		spin_lock_irqsave(&sctl->hw_lock, sflags);
+		ctl_write(sctl, REG_MDP5_CTL_LAYER_REG(sctl->id, r_mixer->lm),
+			  r_blend_cfg);
+		ctl_write(sctl,
+			  REG_MDP5_CTL_LAYER_EXT_REG(sctl->id, r_mixer->lm),
+			  r_blend_ext_cfg);
+		spin_unlock_irqrestore(&sctl->hw_lock, sflags);
+		sctl->pending_ctl_trigger = mdp_ctl_flush_mask_lm(r_mixer->lm);
+	}
+
 	ctl->pending_ctl_trigger = mdp_ctl_flush_mask_lm(mixer->lm);
-	if (r_mixer)
+	if (r_mixer && !pipeline->sctl)
 		ctl->pending_ctl_trigger |= mdp_ctl_flush_mask_lm(r_mixer->lm);
 
 	DBG("lm%d: blend config = 0x%08x. ext_cfg = 0x%08x", mixer->lm,
@@ -532,9 +614,28 @@ u32 mdp5_ctl_commit(struct mdp5_ctl *ctl,
 		spin_unlock_irqrestore(&ctl->hw_lock, flags);
 	}
 
-	if (start_signal_needed(ctl, pipeline)) {
-		send_start_signal(ctl);
+	if (pipeline->sctl && start) {
+		struct mdp5_ctl *sctl = pipeline->sctl;
+		u32 sflush = flush_mask;
+
+		if (sctl->pending_ctl_trigger & sflush) {
+			sflush |= MDP5_CTL_FLUSH_CTL;
+			sctl->pending_ctl_trigger = 0;
+		}
+		if (pipeline->sintf)
+			sflush |= mdp_ctl_flush_mask_encoder(pipeline->sintf);
+		sflush &= ctl_mgr->flush_hw_mask;
+		if (sflush) {
+			spin_lock_irqsave(&sctl->hw_lock, flags);
+			ctl_write(sctl, REG_MDP5_CTL_FLUSH(sctl->id), sflush);
+			spin_unlock_irqrestore(&sctl->hw_lock, flags);
+		}
 	}
+
+	if (start_signal_needed(ctl, pipeline))
+		send_start_signal(ctl);
+	if (pipeline->sctl && start_signal_needed(pipeline->sctl, pipeline))
+		send_start_signal(pipeline->sctl);
 
 	return curr_ctl_flush_mask;
 }

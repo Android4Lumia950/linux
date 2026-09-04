@@ -545,7 +545,7 @@ static void mdp5_crtc_atomic_enable(struct drm_crtc *crtc,
 
 	pm_runtime_get_sync(dev);
 
-	if (mdp5_crtc->lm_cursor_enabled) {
+	if (mdp5_crtc->lm_cursor_enabled && !mdp5_cstate->pipeline.r_mixer) {
 		/*
 		 * Restore LM cursor state, as it might have been lost
 		 * with suspend:
@@ -747,6 +747,9 @@ static int mdp5_crtc_atomic_check(struct drm_crtc *crtc,
 	 * LM's max width
 	 */
 	if (mode->hdisplay > hw_cfg->lm.max_width)
+		need_right_mixer = true;
+
+	if (mdp5_cmd_dual_lm(hw_cfg, intf))
 		need_right_mixer = true;
 
 	ret = mdp5_crtc_setup_pipeline(crtc, crtc_state, need_right_mixer);

@@ -21,11 +21,12 @@ static int pingpong_tearcheck_setup(struct drm_encoder *encoder,
 				    struct drm_display_mode *mode)
 {
 	struct mdp5_kms *mdp5_kms = get_kms(encoder);
+	struct mdp5_pipeline *pipeline = mdp5_crtc_get_pipeline(encoder->crtc);
+	struct mdp5_hw_mixer *mixers[] = { pipeline->mixer, pipeline->r_mixer };
 	struct device *dev = encoder->dev->dev;
 	u32 total_lines, vclks_line, cfg;
 	long vsync_clk_speed;
 	struct mdp5_hw_mixer *mixer = mdp5_crtc_get_mixer(encoder->crtc);
-	int pp_id = mixer->pp;
 
 	if (IS_ERR_OR_NULL(mdp5_kms->vsync_clk)) {
 		DRM_DEV_ERROR(dev, "vsync_clk is not initialized\n");
@@ -58,18 +59,24 @@ static int pingpong_tearcheck_setup(struct drm_encoder *encoder,
 	 * panel arrive too late or not at all, but is currently used by default
 	 * because these panel interrupts are not wired up yet.
 	 */
-	mdp5_write(mdp5_kms, REG_MDP5_PP_SYNC_CONFIG_VSYNC(pp_id), cfg);
-	mdp5_write(mdp5_kms,
-		REG_MDP5_PP_SYNC_CONFIG_HEIGHT(pp_id), (2 * mode->vtotal));
 
-	mdp5_write(mdp5_kms,
-		REG_MDP5_PP_VSYNC_INIT_VAL(pp_id), mode->vdisplay);
-	mdp5_write(mdp5_kms, REG_MDP5_PP_RD_PTR_IRQ(pp_id), mode->vdisplay + 1);
-	mdp5_write(mdp5_kms, REG_MDP5_PP_START_POS(pp_id), mode->vdisplay);
-	mdp5_write(mdp5_kms, REG_MDP5_PP_SYNC_THRESH(pp_id),
-			MDP5_PP_SYNC_THRESH_START(4) |
-			MDP5_PP_SYNC_THRESH_CONTINUE(4));
-	mdp5_write(mdp5_kms, REG_MDP5_PP_AUTOREFRESH_CONFIG(pp_id), 0x0);
+	for (int i = 0; i < ARRAY_SIZE(mixers); i++) {
+		if (!mixers[i] || mixers[i]->pp < 0)
+			continue;
+			
+		int pp = mixers[i]->pp;	
+		mdp5_write(mdp5_kms, REG_MDP5_PP_SYNC_CONFIG_VSYNC(pp), cfg);
+		mdp5_write(mdp5_kms,
+			REG_MDP5_PP_SYNC_CONFIG_HEIGHT(pp), (2 * mode->vtotal));
+		mdp5_write(mdp5_kms,
+			REG_MDP5_PP_VSYNC_INIT_VAL(pp), mode->vdisplay);
+		mdp5_write(mdp5_kms, REG_MDP5_PP_RD_PTR_IRQ(pp), mode->vdisplay + 1);
+		mdp5_write(mdp5_kms, REG_MDP5_PP_START_POS(pp), mode->vdisplay);
+		mdp5_write(mdp5_kms, REG_MDP5_PP_SYNC_THRESH(pp),
+				MDP5_PP_SYNC_THRESH_START(4) |
+				MDP5_PP_SYNC_THRESH_CONTINUE(4));
+		mdp5_write(mdp5_kms, REG_MDP5_PP_AUTOREFRESH_CONFIG(pp), 0x0);
+	}
 
 	return 0;
 }
@@ -77,8 +84,8 @@ static int pingpong_tearcheck_setup(struct drm_encoder *encoder,
 static int pingpong_tearcheck_enable(struct drm_encoder *encoder)
 {
 	struct mdp5_kms *mdp5_kms = get_kms(encoder);
-	struct mdp5_hw_mixer *mixer = mdp5_crtc_get_mixer(encoder->crtc);
-	int pp_id = mixer->pp;
+	struct mdp5_pipeline *pipeline = mdp5_crtc_get_pipeline(encoder->crtc);
+	struct mdp5_hw_mixer *mixers[] = { pipeline->mixer, pipeline->r_mixer };
 	int ret;
 
 	ret = clk_set_rate(mdp5_kms->vsync_clk,
@@ -95,7 +102,11 @@ static int pingpong_tearcheck_enable(struct drm_encoder *encoder)
 		return ret;
 	}
 
-	mdp5_write(mdp5_kms, REG_MDP5_PP_TEAR_CHECK_EN(pp_id), 1);
+	for (int i = 0; i < ARRAY_SIZE(mixers); i++) {
+		if (!mixers[i] || mixers[i]->pp < 0)
+			continue;
+		mdp5_write(mdp5_kms, REG_MDP5_PP_TEAR_CHECK_EN(mixers[i]->pp), 1);
+	}
 
 	return 0;
 }
@@ -104,9 +115,14 @@ static void pingpong_tearcheck_disable(struct drm_encoder *encoder)
 {
 	struct mdp5_kms *mdp5_kms = get_kms(encoder);
 	struct mdp5_hw_mixer *mixer = mdp5_crtc_get_mixer(encoder->crtc);
-	int pp_id = mixer->pp;
+	struct mdp5_pipeline *pipeline = mdp5_crtc_get_pipeline(encoder->crtc);
+	struct mdp5_hw_mixer *mixers[] = { pipeline->mixer, pipeline->r_mixer };
 
-	mdp5_write(mdp5_kms, REG_MDP5_PP_TEAR_CHECK_EN(pp_id), 0);
+	for (int i = 0; i < ARRAY_SIZE(mixers); i++) {
+		if (!mixers[i] || mixers[i]->pp < 0)
+			continue;
+		mdp5_write(mdp5_kms, REG_MDP5_PP_TEAR_CHECK_EN(mixers[i]->pp), 0);
+	}
 	clk_disable_unprepare(mdp5_kms->vsync_clk);
 }
 
