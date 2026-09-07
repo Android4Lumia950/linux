@@ -11,6 +11,7 @@
 #include <linux/firmware/qcom/qcom_pas.h>
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/kernel.h>
+#include <linux/of.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/pm_opp.h>
 #include <linux/slab.h>
@@ -216,6 +217,14 @@ adreno_iommu_create_vm(struct msm_gpu *gpu,
 	 * allowing room in the lower 32 bits for GMEM and whatnot
 	 */
 	start = max_t(u64, SZ_16M, geometry->aperture_start);
+	/*
+	 * A430 on MSM8994: the first GEM at SZ_16M (memptrs) permission-
+	 * faults. Ring fetch at a higher iova retires. Leave that 16 MiB
+	 * slot unused so the fence is not that address.
+	 */
+	if (adreno_is_a430(to_adreno_gpu(gpu)) &&
+	    of_machine_is_compatible("qcom,msm8994"))
+		start = max_t(u64, SZ_32M, start);
 	size = geometry->aperture_end - start + 1;
 
 	vm = msm_gem_vm_create(gpu->dev, mmu, "gpu", start & GENMASK_ULL(48, 0),
@@ -398,7 +407,12 @@ int adreno_get_param(struct msm_gpu *gpu, struct msm_context *ctx,
 		return 0;
 	case MSM_PARAM_TIMESTAMP:
 		if (adreno_gpu->funcs->get_timestamp) {
-			pm_runtime_get_sync(&gpu->pdev->dev);
+			int ret = pm_runtime_get_sync(&gpu->pdev->dev);
+
+			if (ret < 0) {
+				pm_runtime_put_noidle(&gpu->pdev->dev);
+				return ret;
+			}
 			*value = adreno_gpu->funcs->get_timestamp(gpu);
 			pm_runtime_put_autosuspend(&gpu->pdev->dev);
 
@@ -1146,10 +1160,9 @@ static int adreno_get_pwrlevels(struct device *dev,
 	return 0;
 }
 
-int adreno_gpu_ocmem_init(struct device *dev, struct adreno_gpu *adreno_gpu,
-			  struct adreno_ocmem *adreno_ocmem)
+int adreno_gpu_ocmem_get(struct device *dev, struct adreno_gpu *adreno_gpu,
+			 struct adreno_ocmem *adreno_ocmem)
 {
-	struct ocmem_buf *ocmem_hdl;
 	struct ocmem *ocmem;
 
 	ocmem = of_get_ocmem(dev);
@@ -1166,11 +1179,23 @@ int adreno_gpu_ocmem_init(struct device *dev, struct adreno_gpu *adreno_gpu,
 		return PTR_ERR(ocmem);
 	}
 
-	ocmem_hdl = ocmem_allocate(ocmem, OCMEM_GRAPHICS, adreno_gpu->info->gmem);
+	adreno_ocmem->ocmem = ocmem;
+	return 0;
+}
+
+int adreno_gpu_ocmem_alloc(struct adreno_gpu *adreno_gpu,
+			   struct adreno_ocmem *adreno_ocmem)
+{
+	struct ocmem_buf *ocmem_hdl;
+
+	if (!adreno_ocmem->ocmem || adreno_ocmem->hdl)
+		return 0;
+
+	ocmem_hdl = ocmem_allocate(adreno_ocmem->ocmem, OCMEM_GRAPHICS,
+				   adreno_gpu->info->gmem);
 	if (IS_ERR(ocmem_hdl))
 		return PTR_ERR(ocmem_hdl);
 
-	adreno_ocmem->ocmem = ocmem;
 	adreno_ocmem->base = ocmem_hdl->addr;
 	adreno_ocmem->hdl = ocmem_hdl;
 
@@ -1180,11 +1205,26 @@ int adreno_gpu_ocmem_init(struct device *dev, struct adreno_gpu *adreno_gpu,
 	return 0;
 }
 
+int adreno_gpu_ocmem_init(struct device *dev, struct adreno_gpu *adreno_gpu,
+			  struct adreno_ocmem *adreno_ocmem)
+{
+	int ret;
+
+	ret = adreno_gpu_ocmem_get(dev, adreno_gpu, adreno_ocmem);
+	if (ret)
+		return ret;
+
+	return adreno_gpu_ocmem_alloc(adreno_gpu, adreno_ocmem);
+}
+
 void adreno_gpu_ocmem_cleanup(struct adreno_ocmem *adreno_ocmem)
 {
-	if (adreno_ocmem && adreno_ocmem->base)
+	if (adreno_ocmem && adreno_ocmem->hdl) {
 		ocmem_free(adreno_ocmem->ocmem, OCMEM_GRAPHICS,
 			   adreno_ocmem->hdl);
+		adreno_ocmem->hdl = NULL;
+		adreno_ocmem->base = 0;
+	}
 }
 
 int adreno_read_speedbin(struct device *dev, u32 *speedbin)

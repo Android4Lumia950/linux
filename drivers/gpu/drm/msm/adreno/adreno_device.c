@@ -7,6 +7,7 @@
  */
 
 #include "adreno_gpu.h"
+#include <soc/qcom/msm8994-oxili.h>
 
 bool hang_debug = false;
 MODULE_PARM_DESC(hang_debug, "Dump registers when hang is detected (can be slow!)");
@@ -99,11 +100,27 @@ struct msm_gpu *adreno_load_gpu(struct drm_device *dev)
 			return NULL;
 	}
 
+	if (pm_runtime_enabled(&pdev->dev) && !gpu->needs_hw_init)
+		return gpu;
+
+	/*
+	 * MSM8994 A430: GX+CX must be on before runtime_get (iommu
+	 * tbu=gfx3d). 3.10 kgsl_pwrctrl_enable does rails then clocks.
+	 * Do not put OXILI_GX_GDSC on &gpu.
+	 */
+	if (adreno_is_a430(adreno_gpu) &&
+	    of_machine_is_compatible("qcom,msm8994")) {
+		ret = msm8994_oxili_pre_gpu_power();
+		if (ret)
+			return NULL;
+	}
+
 	/*
 	 * Now that we have firmware loaded, and are ready to begin
 	 * booting the gpu, go ahead and enable runpm:
 	 */
-	pm_runtime_enable(&pdev->dev);
+	if (!pm_runtime_enabled(&pdev->dev))
+		pm_runtime_enable(&pdev->dev);
 
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret < 0) {
@@ -120,7 +137,18 @@ struct msm_gpu *adreno_load_gpu(struct drm_device *dev)
 		goto err_put_rpm;
 	}
 
-	pm_runtime_put_autosuspend(&pdev->dev);
+	if (adreno_is_a430(adreno_gpu) &&
+	    of_machine_is_compatible("qcom,msm8994")) {
+		msm8994_oxili_mark_gpu_live();
+		/*
+		 * First hw_init works. put_autosuspend then TIMESTAMP
+		 * get_sync: iommu scm(18) with GX off returns -EINVAL
+		 * and the SoC SEAs. Keep this get_sync so the rails
+		 * and SMMU stay up. Do not put GX on &gpu.
+		 */
+	} else {
+		pm_runtime_put_autosuspend(&pdev->dev);
+	}
 
 #ifdef CONFIG_DEBUG_FS
 	if (gpu->funcs->debugfs_init) {
