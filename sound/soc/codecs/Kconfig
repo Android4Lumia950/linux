@@ -2438,6 +2438,16 @@ config SND_SOC_WCD_CLASSH
 config SND_SOC_WCD_COMMON
 	tristate
 
+config SND_SOC_WCD9330
+	tristate "WCD9330 Codec"
+	depends on SLIMBUS
+	depends on COMMON_CLK
+	select REGMAP_SLIMBUS
+	help
+	  Qualcomm WCD9330 (tomtom) SLIMbus codec, used as the
+	  3.5 mm path on MSM8994 boards. This is not WCD9335
+	  (Tasha).
+
 config SND_SOC_WCD9335
 	tristate "WCD9335 Codec"
 	depends on SLIMBUS
