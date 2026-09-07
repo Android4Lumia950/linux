@@ -970,9 +970,25 @@ static int rpmpd_send_enable(struct rpmpd *pd, bool enable)
 		.nbytes = cpu_to_le32(sizeof(u32)),
 		.value = cpu_to_le32(enable),
 	};
+	int ret;
 
-	return qcom_rpm_smd_write(rpmpd_smd_rpm, QCOM_SMD_RPM_ACTIVE_STATE,
-				  pd->res_type, pd->res_id, &req, sizeof(req));
+	ret = qcom_rpm_smd_write(rpmpd_smd_rpm, QCOM_SMD_RPM_ACTIVE_STATE,
+				 pd->res_type, pd->res_id, &req, sizeof(req));
+	if (ret)
+		return ret;
+
+	/*
+	 * 3.10 pmi8994_s2_corner has qcom,set = <3> (active+sleep).
+	 * Mainline rpmpd only voted ACTIVE swen. MSM8994 VDDGFX is
+	 * gfx_s2b_corner (SMPB 2); CX on this SoC is SMPA 1, not SMPB 2.
+	 */
+	if (pd == &gfx_s2b_corner)
+		ret = qcom_rpm_smd_write(rpmpd_smd_rpm,
+					 QCOM_SMD_RPM_SLEEP_STATE,
+					 pd->res_type, pd->res_id, &req,
+					 sizeof(req));
+
+	return ret;
 }
 
 static int rpmpd_send_corner(struct rpmpd *pd, int state, unsigned int corner)
