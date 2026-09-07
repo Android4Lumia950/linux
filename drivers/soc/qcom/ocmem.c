@@ -18,6 +18,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/regulator/consumer.h>
 #include <linux/firmware/qcom/qcom_scm.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
@@ -58,6 +59,7 @@ struct ocmem {
 	void __iomem *mmio;
 	struct clk *core_clk;
 	struct clk *iface_clk;
+	struct regulator *vdd_gfx;
 	unsigned int num_ports;
 	unsigned int num_macros;
 	bool interleaved;
@@ -92,7 +94,7 @@ struct ocmem {
 #define OCMEM_REG_GEN_STATUS			0x0000000c
 
 #define OCMEM_REG_PSGSC_STATUS			0x00000038
-#define OCMEM_REG_PSGSC_CTL(i0)			(0x0000003c + 0x1*(i0))
+#define OCMEM_REG_PSGSC_CTL(i0)			(0x0000003c + 0x4 * (i0))
 
 #define OCMEM_PSGSC_CTL_MACRO0_MODE(val)	FIELD_PREP(0x00000007, (val))
 #define OCMEM_PSGSC_CTL_MACRO1_MODE(val)	FIELD_PREP(0x00000070, (val))
@@ -114,6 +116,10 @@ static void update_ocmem(struct ocmem *ocmem)
 	uint32_t region_mode_ctrl = 0x0;
 	int i;
 
+	/*
+	 * Secure firmware programs REGION_MODE. HLOS still writes PSGSC
+	 * after a TZ lock (downstream memory_on / LOCAL_POWER_CTRL).
+	 */
 	if (!qcom_scm_ocmem_lock_available()) {
 		for (i = 0; i < ocmem->config->num_regions; i++) {
 			struct ocmem_region *region = &ocmem->regions[i];
@@ -140,23 +146,13 @@ static void update_ocmem(struct ocmem *ocmem)
 	}
 }
 
-static unsigned long phys_to_offset(struct ocmem *ocmem,
-				    unsigned long addr)
-{
-	if (addr < ocmem->memory->start || addr >= ocmem->memory->end)
-		return 0;
-
-	return addr - ocmem->memory->start;
-}
-
-static unsigned long device_address(struct ocmem *ocmem,
+static unsigned long device_address(struct ocmem *ocmem __always_unused,
 				    enum ocmem_client client,
-				    unsigned long addr)
+				    unsigned long offset)
 {
 	WARN_ON(client != OCMEM_GRAPHICS);
-
-	/* TODO: gpu uses phys_to_offset, but others do not.. */
-	return phys_to_offset(ocmem, addr);
+	/* Graphics GMEM is an offset, not a CPU physical address. */
+	return offset;
 }
 
 static void update_range(struct ocmem *ocmem, struct ocmem_buf *buf,
@@ -235,9 +231,13 @@ struct ocmem_buf *ocmem_allocate(struct ocmem *ocmem, enum ocmem_client client,
 	buf->addr = device_address(ocmem, client, buf->offset);
 	buf->len = size;
 
-	update_range(ocmem, buf, CORE_ON, WIDE_MODE);
-
 	if (qcom_scm_ocmem_lock_available()) {
+		if (qcom_scm_restore_sec_cfg_available()) {
+			ret = qcom_scm_restore_sec_cfg(QCOM_SCM_OCMEM_DEV_ID,
+						       0);
+			if (ret)
+				goto err_unlock;
+		}
 		ret = qcom_scm_ocmem_lock(QCOM_SCM_OCMEM_GRAPHICS_ID,
 					  buf->offset, buf->len, WIDE_MODE);
 		if (ret) {
@@ -245,7 +245,9 @@ struct ocmem_buf *ocmem_allocate(struct ocmem *ocmem, enum ocmem_client client,
 			ret = -EINVAL;
 			goto err_unlock;
 		}
+		update_range(ocmem, buf, CORE_ON, WIDE_MODE);
 	} else {
+		update_range(ocmem, buf, CORE_ON, WIDE_MODE);
 		ocmem_write(ocmem, OCMEM_REG_GFX_MPU_START, buf->offset);
 		ocmem_write(ocmem, OCMEM_REG_GFX_MPU_END,
 			    buf->offset + buf->len);
@@ -317,29 +319,50 @@ static int ocmem_dev_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, PTR_ERR(ocmem->iface_clk),
 				     "Unable to get iface clock\n");
 
+	ocmem->vdd_gfx = devm_regulator_get_optional(dev, "vdd-gfx");
+	if (IS_ERR(ocmem->vdd_gfx)) {
+		if (PTR_ERR(ocmem->vdd_gfx) != -ENODEV)
+			return dev_err_probe(dev, PTR_ERR(ocmem->vdd_gfx),
+					     "Unable to get vdd-gfx\n");
+		ocmem->vdd_gfx = NULL;
+	}
+	if (ocmem->vdd_gfx) {
+		ret = regulator_enable(ocmem->vdd_gfx);
+		if (ret)
+			return dev_err_probe(dev, ret,
+					     "Failed to enable vdd-gfx\n");
+	}
+
 	ocmem->mmio = devm_platform_ioremap_resource_byname(pdev, "ctrl");
-	if (IS_ERR(ocmem->mmio))
-		return dev_err_probe(&pdev->dev, PTR_ERR(ocmem->mmio),
-				     "Failed to ioremap ocmem_ctrl resource\n");
+	if (IS_ERR(ocmem->mmio)) {
+		ret = PTR_ERR(ocmem->mmio);
+		dev_err_probe(&pdev->dev, ret,
+			      "Failed to ioremap ocmem_ctrl resource\n");
+		goto err_vdd_disable;
+	}
 
 	ocmem->memory = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 						     "mem");
 	if (!ocmem->memory) {
 		dev_err(dev, "Could not get mem region\n");
-		return -ENXIO;
+		ret = -ENXIO;
+		goto err_vdd_disable;
 	}
 
 	/* The core clock is synchronous with graphics */
 	WARN_ON(clk_set_rate(ocmem->core_clk, 1000) < 0);
 
 	ret = clk_prepare_enable(ocmem->core_clk);
-	if (ret)
-		return dev_err_probe(ocmem->dev, ret, "Failed to enable core clock\n");
+	if (ret) {
+		dev_err_probe(ocmem->dev, ret, "Failed to enable core clock\n");
+		goto err_vdd_disable;
+	}
 
 	ret = clk_prepare_enable(ocmem->iface_clk);
 	if (ret) {
 		clk_disable_unprepare(ocmem->core_clk);
-		return dev_err_probe(ocmem->dev, ret, "Failed to enable iface clock\n");
+		dev_err_probe(ocmem->dev, ret, "Failed to enable iface clock\n");
+		goto err_vdd_disable;
 	}
 
 	if (qcom_scm_restore_sec_cfg_available()) {
@@ -407,6 +430,9 @@ static int ocmem_dev_probe(struct platform_device *pdev)
 err_clk_disable:
 	clk_disable_unprepare(ocmem->core_clk);
 	clk_disable_unprepare(ocmem->iface_clk);
+err_vdd_disable:
+	if (ocmem->vdd_gfx)
+		regulator_disable(ocmem->vdd_gfx);
 	return ret;
 }
 
@@ -416,6 +442,8 @@ static void ocmem_dev_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(ocmem->core_clk);
 	clk_disable_unprepare(ocmem->iface_clk);
+	if (ocmem->vdd_gfx)
+		regulator_disable(ocmem->vdd_gfx);
 }
 
 static const struct ocmem_config ocmem_8226_config = {
@@ -428,9 +456,16 @@ static const struct ocmem_config ocmem_8974_config = {
 	.macro_size = SZ_128K,
 };
 
+/* MSM8994: 2 MiB, four regions (graphics 1.5 MiB + video 0.5 MiB). */
+static const struct ocmem_config ocmem_8994_config = {
+	.num_regions = 4,
+	.macro_size = SZ_128K,
+};
+
 static const struct of_device_id ocmem_of_match[] = {
 	{ .compatible = "qcom,msm8226-ocmem", .data = &ocmem_8226_config },
 	{ .compatible = "qcom,msm8974-ocmem", .data = &ocmem_8974_config },
+	{ .compatible = "qcom,msm8994-ocmem", .data = &ocmem_8994_config },
 	{ }
 };
 
