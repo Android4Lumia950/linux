@@ -1084,6 +1084,45 @@ static bool qcom_scm_is_pas_available(void)
 	return true;
 }
 
+#define QCOM_SCM_SHARED_HEAP_READ	0x1
+#define QCOM_SCM_SHARED_HEAP_WRITE	0x2
+
+/**
+ * qcom_scm_pil_shared_heap() - grant a CMA heap to a PIL remoteproc
+ * @addr: physical base of the heap
+ * @size: heap size
+ * @proc_id: remote processor id (ADSP audio heap is 1)
+ *
+ * SIP PIL service command 0x0B. Distinct from qcom_scm_assign_mem().
+ */
+int qcom_scm_pil_shared_heap(phys_addr_t addr, size_t size, u32 proc_id)
+{
+	struct qcom_scm_desc desc = {
+		.svc = QCOM_SCM_SVC_PIL,
+		.cmd = QCOM_SCM_PIL_SHARED_HEAP,
+		.arginfo = QCOM_SCM_ARGS(4),
+		.args[0] = addr,
+		.args[1] = size,
+		.args[2] = proc_id,
+		.args[3] = QCOM_SCM_SHARED_HEAP_READ |
+			   QCOM_SCM_SHARED_HEAP_WRITE,
+		.owner = ARM_SMCCC_OWNER_SIP,
+	};
+	struct qcom_scm_res res;
+	int ret;
+
+	if (!__scm)
+		return -EPROBE_DEFER;
+
+	if (!__qcom_scm_is_call_available(__scm->dev, QCOM_SCM_SVC_PIL,
+					  QCOM_SCM_PIL_SHARED_HEAP))
+		return -EOPNOTSUPP;
+
+	ret = qcom_scm_call(__scm->dev, &desc, &res);
+	return ret ? : res.result[0];
+}
+EXPORT_SYMBOL_GPL(qcom_scm_pil_shared_heap);
+
 static int __qcom_scm_pas_mss_reset(struct device *dev, bool reset)
 {
 	struct qcom_scm_desc desc = {
@@ -1443,6 +1482,8 @@ int qcom_scm_ocmem_lock(enum qcom_scm_ocmem_client id, u32 offset, u32 size,
 		.args[2] = size,
 		.args[3] = mode,
 		.arginfo = QCOM_SCM_ARGS(4),
+		/* SIP; same as 3.10 SCM_SIP_FNID and is_call_available */
+		.owner = ARM_SMCCC_OWNER_SIP,
 	};
 
 	return qcom_scm_call(__scm->dev, &desc, NULL);
@@ -1466,6 +1507,7 @@ int qcom_scm_ocmem_unlock(enum qcom_scm_ocmem_client id, u32 offset, u32 size)
 		.args[1] = offset,
 		.args[2] = size,
 		.arginfo = QCOM_SCM_ARGS(3),
+		.owner = ARM_SMCCC_OWNER_SIP,
 	};
 
 	return qcom_scm_call(__scm->dev, &desc, NULL);
