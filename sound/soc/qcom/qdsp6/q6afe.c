@@ -34,7 +34,11 @@
 #define AFE_MODULE_AUDIO_DEV_INTERFACE	0x0001020C
 #define AFE_MODULE_TDM			0x0001028A
 
+#define AFE_MODULE_CDC_DEV_CFG			0x00010234
 #define AFE_PARAM_ID_CDC_SLIMBUS_SLAVE_CFG 0x00010235
+#define AFE_PARAM_ID_CDC_REG_CFG		0x00010236
+#define AFE_PARAM_ID_CDC_REG_CFG_INIT		0x00010237
+#define AFE_MAX_CDC_REGISTERS_TO_CONFIG		20
 #define AFE_PARAM_ID_USB_AUDIO_DEV_PARAMS    0x000102A5
 #define AFE_PARAM_ID_USB_AUDIO_DEV_LPCM_FMT 0x000102AA
 
@@ -386,6 +390,7 @@
 #define AFE_CMD_RESP_AVAIL	0
 #define AFE_CMD_RESP_NONE	1
 #define AFE_CLK_TOKEN		1024
+#define AFE_CDC_CFG_TOKEN	1025
 
 struct q6afe {
 	struct apr_device *apr;
@@ -421,6 +426,29 @@ struct afe_svc_cmd_set_param {
 	uint32_t payload_address_lsw;
 	uint32_t payload_address_msw;
 	uint32_t mem_map_handle;
+} __packed;
+
+/* 3.10 include/sound/apr_audio-v2.h — AFE_MODULE_CDC_DEV_CFG payloads */
+struct afe_param_cdc_slimbus_slave_cfg {
+	u32 minor_version;
+	u32 device_enum_addr_lsw;
+	u32 device_enum_addr_msw;
+	u16 tx_slave_port_offset;
+	u16 rx_slave_port_offset;
+} __packed;
+
+struct afe_param_cdc_reg_cfg {
+	u32 minor_version;
+	u32 reg_logical_addr;
+	u32 reg_field_type;
+	u32 reg_field_bit_mask;
+	u16 reg_bit_width;
+	u16 reg_offset_scale;
+} __packed;
+
+struct afe_param_cdc_reg_cfg_payload {
+	struct afe_port_param_data_v2 common;
+	struct afe_param_cdc_reg_cfg reg_cfg;
 } __packed;
 
 struct afe_port_cmd_set_param_v2 {
@@ -1031,7 +1059,8 @@ static int q6afe_callback(struct apr_device *adev, const struct apr_resp_pkt *da
 				port->result = *res;
 				wake_up(&port->wait);
 				kref_put(&port->refcount, q6afe_port_free);
-			} else if (hdr->token == AFE_CLK_TOKEN) {
+			} else if (hdr->token == AFE_CLK_TOKEN ||
+				   hdr->token == AFE_CDC_CFG_TOKEN) {
 				afe->result = *res;
 				wake_up(&afe->wait);
 			}
@@ -1255,6 +1284,94 @@ int q6afe_set_lpass_clock(struct device *dev, int clk_id, int attri,
 			       AFE_CLK_TOKEN);
 }
 EXPORT_SYMBOL_GPL(q6afe_set_lpass_clock);
+
+/*
+ * 3.10 afe_send_slimbus_slave_cfg / afe_init_cdc_reg_config /
+ * afe_send_codec_reg_config. Service-level AFE_SVC_CMD_SET_PARAM
+ * on AFE_MODULE_CDC_DEV_CFG. msm8994.c msm_afe_set_config sends
+ * these before any SLIMBUS_0_RX playback.
+ */
+int q6afe_cdc_slimbus_slave_cfg(struct device *dev, u32 enum_lsw, u32 enum_msw,
+				u16 tx_port_offset, u16 rx_port_offset)
+{
+	struct q6afe *afe = dev_get_drvdata(dev->parent);
+	struct afe_param_cdc_slimbus_slave_cfg cfg = {
+		.minor_version = 1,
+		.device_enum_addr_lsw = enum_lsw,
+		.device_enum_addr_msw = enum_msw,
+		.tx_slave_port_offset = tx_port_offset,
+		.rx_slave_port_offset = rx_port_offset,
+	};
+
+	return q6afe_set_param(afe, NULL, &cfg, AFE_PARAM_ID_CDC_SLIMBUS_SLAVE_CFG,
+			       AFE_MODULE_CDC_DEV_CFG, sizeof(cfg),
+			       AFE_CDC_CFG_TOKEN);
+}
+EXPORT_SYMBOL_GPL(q6afe_cdc_slimbus_slave_cfg);
+
+int q6afe_cdc_reg_cfg_init(struct device *dev)
+{
+	struct q6afe *afe = dev_get_drvdata(dev->parent);
+
+	u32 dummy = 0;
+
+	return q6afe_set_param(afe, NULL, &dummy, AFE_PARAM_ID_CDC_REG_CFG_INIT,
+			       AFE_MODULE_CDC_DEV_CFG, 0, AFE_CDC_CFG_TOKEN);
+}
+EXPORT_SYMBOL_GPL(q6afe_cdc_reg_cfg_init);
+
+int q6afe_cdc_reg_cfg(struct device *dev, const struct q6afe_cdc_reg_cfg *regs,
+		      unsigned int nregs)
+{
+	struct q6afe *afe = dev_get_drvdata(dev->parent);
+	struct afe_svc_cmd_set_param *param;
+	struct afe_param_cdc_reg_cfg_payload *reg_data;
+	struct apr_pkt *pkt;
+	unsigned int i;
+	int ret, pkt_size, payload_size;
+
+	if (!regs || !nregs || nregs > AFE_MAX_CDC_REGISTERS_TO_CONFIG)
+		return -EINVAL;
+
+	payload_size = sizeof(*reg_data) * nregs;
+	pkt_size = APR_HDR_SIZE + sizeof(*param) + payload_size;
+
+	void *p __free(kfree) = kzalloc(pkt_size, GFP_KERNEL);
+	if (!p)
+		return -ENOMEM;
+
+	pkt = p;
+	param = p + APR_HDR_SIZE;
+	reg_data = p + APR_HDR_SIZE + sizeof(*param);
+
+	pkt->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+					   APR_HDR_LEN(APR_HDR_SIZE),
+					   APR_PKT_VER);
+	pkt->hdr.pkt_size = pkt_size;
+	pkt->hdr.src_port = 0;
+	pkt->hdr.dest_port = 0;
+	pkt->hdr.token = AFE_CDC_CFG_TOKEN;
+	pkt->hdr.opcode = AFE_SVC_CMD_SET_PARAM;
+
+	param->payload_size = payload_size;
+	for (i = 0; i < nregs; i++) {
+		reg_data[i].common.module_id = AFE_MODULE_CDC_DEV_CFG;
+		reg_data[i].common.param_id = AFE_PARAM_ID_CDC_REG_CFG;
+		reg_data[i].common.param_size = sizeof(reg_data[i].reg_cfg);
+		reg_data[i].reg_cfg.minor_version = 1;
+		reg_data[i].reg_cfg.reg_logical_addr = regs[i].reg_logical_addr;
+		reg_data[i].reg_cfg.reg_field_type = regs[i].reg_field_type;
+		reg_data[i].reg_cfg.reg_field_bit_mask = regs[i].reg_field_bit_mask;
+		reg_data[i].reg_cfg.reg_bit_width = regs[i].reg_bit_width;
+		reg_data[i].reg_cfg.reg_offset_scale = regs[i].reg_offset_scale;
+	}
+
+	ret = afe_apr_send_pkt(afe, pkt, NULL, AFE_SVC_CMD_SET_PARAM);
+	if (ret)
+		dev_err(afe->dev, "AFE_PARAM_ID_CDC_REG_CFG failed %d\n", ret);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(q6afe_cdc_reg_cfg);
 
 int q6afe_port_set_sysclk(struct q6afe_port *port, int clk_id,
 			  int clk_src, int clk_root,

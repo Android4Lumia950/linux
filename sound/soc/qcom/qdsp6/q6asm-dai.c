@@ -17,6 +17,8 @@
 #include <asm/div64.h>
 #include <asm/dma.h>
 #include <linux/dma-mapping.h>
+#include <linux/of_reserved_mem.h>
+#include <linux/firmware/qcom/qcom_scm.h>
 #include <sound/pcm_params.h>
 #include "q6asm.h"
 #include "q6routing.h"
@@ -1313,6 +1315,40 @@ static int q6asm_dai_probe(struct platform_device *pdev)
 		pdata->sid = -1;
 	else
 		pdata->sid = args.args[0] & SID_MASK_DEFAULT;
+
+	rc = of_reserved_mem_device_init(dev);
+	if (rc && rc != -ENODEV) {
+		dev_err(dev, "reserved-mem init failed: %d\n", rc);
+		return rc;
+	}
+
+	/*
+	 * Optional PIL shared-heap unlock (qcom,proc-id). ADSP must
+	 * be allowed to DMA the audio CMA; this is SVC PIL cmd 0xB.
+	 */
+	if (!rc) {
+		struct resource aheap;
+		u32 proc_id;
+
+		rc = of_reserved_mem_region_to_resource(node, 0, &aheap);
+		if (!rc && !of_property_read_u32(node, "qcom,proc-id",
+						 &proc_id)) {
+			rc = qcom_scm_pil_shared_heap(aheap.start,
+						      resource_size(&aheap),
+						      proc_id);
+			if (rc) {
+				dev_err(dev,
+					"shared-heap unlock failed: %d\n", rc);
+				return rc;
+			}
+			dev_info(dev,
+				 "shared-heap unlock %#llx/%#llx proc=%u\n",
+				 (unsigned long long)aheap.start,
+				 (unsigned long long)resource_size(&aheap),
+				 proc_id);
+		}
+		rc = 0;
+	}
 
 	dev_set_drvdata(dev, pdata);
 

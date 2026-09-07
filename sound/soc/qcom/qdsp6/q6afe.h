@@ -268,6 +268,21 @@ int q6afe_port_set_sysclk(struct q6afe_port *port, int clk_id,
 			  unsigned int freq, int dir);
 int q6afe_set_lpass_clock(struct device *dev, int clk_id, int attri,
 			  int clk_root, unsigned int freq);
+
+/* 3.10 afe_param_cdc_reg_cfg fields sent via AFE_PARAM_ID_CDC_REG_CFG */
+struct q6afe_cdc_reg_cfg {
+	u32 reg_logical_addr;
+	u32 reg_field_type;
+	u32 reg_field_bit_mask;
+	u16 reg_bit_width;
+	u16 reg_offset_scale;
+};
+
+int q6afe_cdc_slimbus_slave_cfg(struct device *dev, u32 enum_lsw, u32 enum_msw,
+				u16 tx_port_offset, u16 rx_port_offset);
+int q6afe_cdc_reg_cfg_init(struct device *dev);
+int q6afe_cdc_reg_cfg(struct device *dev, const struct q6afe_cdc_reg_cfg *regs,
+		      unsigned int nregs);
 int q6afe_vote_lpass_core_hw(struct device *dev, uint32_t hw_block_id,
 			     const char *client_name, uint32_t *client_handle);
 int q6afe_unvote_lpass_core_hw(struct device *dev, uint32_t hw_block_id,
