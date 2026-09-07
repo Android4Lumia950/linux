@@ -25,6 +25,8 @@
 #define TAS2552_BTIP			0x0b
 #define TAS2552_BTS_CTRL		0x0c
 #define TAS2552_RESERVED_0D		0x0d
+#define TAS2552_RESERVED_0D_INIT	0xc0
+#define TAS2552_RESERVED_0D_IDLE	0xbe
 #define TAS2552_LIMIT_RATE_HYS		0x0e
 #define TAS2552_LIMIT_RELEASE		0x0f
 #define TAS2552_LIMIT_INT_COUNT		0x10
@@ -53,6 +55,7 @@
 #define TAS2552_PLL_ENABLE		(1 << 3)
 #define TAS2552_LIM_EN			(1 << 2)
 #define TAS2552_IVSENSE_EN		(1 << 1)
+#define TAS2552_CFG2_INIT		(1 << 0)
 
 /* CFG3 Register Masks */
 #define TAS2552_WCLK_FREQ_8KHZ		(0x0 << 0)

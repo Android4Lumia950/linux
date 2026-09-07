@@ -9,6 +9,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/device.h>
 #include <linux/i2c.h>
@@ -76,6 +77,19 @@ struct tas2552_data {
 	unsigned int tdm_delay;
 };
 
+/*
+ * Leave software shutdown, then unmute. Reset defaults analog-in,
+ * which ignores I2S; keep the digital mux selected for playback.
+ */
+static void tas2552_playback_unmute(struct snd_soc_component *component)
+{
+	snd_soc_component_update_bits(component, TAS2552_CFG_1, TAS2552_SWS, 0);
+	usleep_range(10000, 11000);
+	snd_soc_component_update_bits(component, TAS2552_CFG_1, TAS2552_MUTE, 0);
+	snd_soc_component_update_bits(component, TAS2552_CFG_3,
+				      TAS2552_ANALOG_IN_SEL, 0);
+}
+
 static int tas2552_post_event(struct snd_soc_dapm_widget *w,
 			      struct snd_kcontrol *kcontrol, int event)
 {
@@ -83,18 +97,23 @@ static int tas2552_post_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
-		snd_soc_component_write(component, TAS2552_RESERVED_0D, 0xc0);
-		snd_soc_component_update_bits(component, TAS2552_LIMIT_RATE_HYS, (1 << 5),
-				    (1 << 5));
-		snd_soc_component_update_bits(component, TAS2552_CFG_2, 1, 0);
-		snd_soc_component_update_bits(component, TAS2552_CFG_1, TAS2552_SWS, 0);
+		snd_soc_component_write(component, TAS2552_RESERVED_0D,
+				      TAS2552_RESERVED_0D_INIT);
+		snd_soc_component_update_bits(component, TAS2552_LIMIT_RATE_HYS,
+				    (1 << 5), (1 << 5));
+		snd_soc_component_update_bits(component, TAS2552_CFG_2,
+				    TAS2552_CFG2_INIT, 0);
+		tas2552_playback_unmute(component);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		snd_soc_component_update_bits(component, TAS2552_CFG_1, TAS2552_SWS,
 				    TAS2552_SWS);
-		snd_soc_component_update_bits(component, TAS2552_CFG_2, 1, 1);
-		snd_soc_component_update_bits(component, TAS2552_LIMIT_RATE_HYS, (1 << 5), 0);
-		snd_soc_component_write(component, TAS2552_RESERVED_0D, 0xbe);
+		snd_soc_component_update_bits(component, TAS2552_CFG_2,
+				    TAS2552_CFG2_INIT, TAS2552_CFG2_INIT);
+		snd_soc_component_update_bits(component, TAS2552_LIMIT_RATE_HYS,
+				    (1 << 5), 0);
+		snd_soc_component_write(component, TAS2552_RESERVED_0D,
+				      TAS2552_RESERVED_0D_IDLE);
 		break;
 	}
 	return 0;
@@ -467,27 +486,40 @@ static int tas2552_set_dai_tdm_slot(struct snd_soc_dai *dai,
 
 static int tas2552_mute(struct snd_soc_dai *dai, int mute, int direction)
 {
-	u8 cfg1_reg = 0;
 	struct snd_soc_component *component = dai->component;
 
-	if (mute)
-		cfg1_reg |= TAS2552_MUTE;
+	if (mute) {
+		snd_soc_component_update_bits(component, TAS2552_CFG_1,
+					      TAS2552_MUTE, TAS2552_MUTE);
+		return 0;
+	}
 
-	snd_soc_component_update_bits(component, TAS2552_CFG_1, TAS2552_MUTE, cfg1_reg);
-
+	tas2552_playback_unmute(component);
 	return 0;
+}
+
+static int tas2552_trigger(struct snd_pcm_substream *substream, int cmd,
+			   struct snd_soc_dai *dai)
+{
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		return tas2552_mute(dai, 0, substream->stream);
+	default:
+		return 0;
+	}
 }
 
 static int tas2552_runtime_suspend(struct device *dev)
 {
 	struct tas2552_data *tas2552 = dev_get_drvdata(dev);
 
+	/* Keep EN asserted; toggling it reloads analog-in defaults. */
 	tas2552_sw_shutdown(tas2552, 1);
 
 	regcache_cache_only(tas2552->regmap, true);
 	regcache_mark_dirty(tas2552->regmap);
-
-	gpiod_set_value_cansleep(tas2552->enable_gpio, 0);
 
 	return 0;
 }
@@ -499,7 +531,8 @@ static int tas2552_runtime_resume(struct device *dev)
 
 	gpiod_set_value_cansleep(tas2552->enable_gpio, 1);
 
-	tas2552_sw_shutdown(tas2552, 0);
+	/* Stay in SWS until DAPM POST_PMU; I2S is not running yet. */
+	tas2552_sw_shutdown(tas2552, 1);
 
 	regcache_cache_only(tas2552->regmap, false);
 	ret = regcache_sync(tas2552->regmap);
@@ -521,6 +554,7 @@ static const struct dev_pm_ops tas2552_pm = {
 static const struct snd_soc_dai_ops tas2552_speaker_dai_ops = {
 	.hw_params	= tas2552_hw_params,
 	.prepare	= tas2552_prepare,
+	.trigger	= tas2552_trigger,
 	.set_sysclk	= tas2552_set_dai_sysclk,
 	.set_fmt	= tas2552_set_dai_fmt,
 	.set_tdm_slot	= tas2552_set_dai_tdm_slot,
@@ -600,7 +634,8 @@ static int tas2552_component_probe(struct snd_soc_component *component)
 		goto probe_fail;
 	}
 
-	snd_soc_component_update_bits(component, TAS2552_CFG_1, TAS2552_MUTE, TAS2552_MUTE);
+	snd_soc_component_update_bits(component, TAS2552_CFG_1, TAS2552_MUTE,
+				      TAS2552_MUTE);
 	snd_soc_component_write(component, TAS2552_CFG_3, TAS2552_I2S_OUT_SEL |
 					    TAS2552_DIN_SRC_SEL_AVG_L_R);
 	snd_soc_component_write(component, TAS2552_OUTPUT_DATA,
@@ -609,8 +644,8 @@ static int tas2552_component_probe(struct snd_soc_component *component)
 	snd_soc_component_write(component, TAS2552_BOOST_APT_CTRL, TAS2552_APT_DELAY_200 |
 						     TAS2552_APT_THRESH_20_17);
 
-	snd_soc_component_write(component, TAS2552_CFG_2, TAS2552_BOOST_EN | TAS2552_APT_EN |
-					    TAS2552_LIM_EN);
+	snd_soc_component_write(component, TAS2552_CFG_2, TAS2552_BOOST_EN |
+					    TAS2552_APT_EN | TAS2552_LIM_EN);
 
 	return 0;
 
@@ -682,6 +717,17 @@ static const struct snd_soc_component_driver soc_component_dev_tas2552 = {
 	.endianness		= 1,
 };
 
+static bool tas2552_volatile_register(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case TAS2552_DEVICE_STATUS:
+	case TAS2552_VBAT_DATA:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static const struct regmap_config tas2552_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
@@ -689,6 +735,7 @@ static const struct regmap_config tas2552_regmap_config = {
 	.max_register = TAS2552_MAX_REG,
 	.reg_defaults = tas2552_reg_defs,
 	.num_reg_defaults = ARRAY_SIZE(tas2552_reg_defs),
+	.volatile_reg = tas2552_volatile_register,
 	.cache_type = REGCACHE_RBTREE,
 };
 
@@ -728,11 +775,14 @@ static int tas2552_probe(struct i2c_client *client)
 		return ret;
 	}
 
+	/*
+	 * set_active does not take a usage ref. The following put
+	 * underflowed (dmesg: "Runtime PM usage count underflow!")
+	 * and armed 1 s autosuspend. Do not autosuspend this part.
+	 */
 	pm_runtime_set_active(&client->dev);
-	pm_runtime_set_autosuspend_delay(&client->dev, 1000);
-	pm_runtime_use_autosuspend(&client->dev);
 	pm_runtime_enable(&client->dev);
-	pm_runtime_put_sync_autosuspend(&client->dev);
+	pm_runtime_get_noresume(&client->dev);
 
 	dev_set_drvdata(&client->dev, data);
 
@@ -741,7 +791,7 @@ static int tas2552_probe(struct i2c_client *client)
 				      tas2552_dai, ARRAY_SIZE(tas2552_dai));
 	if (ret < 0) {
 		dev_err(&client->dev, "Failed to register component: %d\n", ret);
-		pm_runtime_get_noresume(&client->dev);
+		pm_runtime_put_noidle(&client->dev);
 	}
 
 	return ret;
