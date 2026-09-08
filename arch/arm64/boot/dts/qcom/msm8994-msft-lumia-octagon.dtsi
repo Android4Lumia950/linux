@@ -101,7 +101,7 @@
 
 		event-hall-front-sensor {
 			label = "Hall Effect Front Sensor";
-			gpios = <&tlmm 42 GPIO_ACTIVE_HIGH>;
+			gpios = <&tlmm 42 GPIO_ACTIVE_LOW>;
 			linux,input-type = <EV_SW>;
 			linux,code = <SW_LID>;
 			linux,can-disable;
@@ -109,7 +109,7 @@
 
 		event-hall-back-sensor {
 			label = "Hall Effect Back Sensor";
-			gpios = <&tlmm 75 GPIO_ACTIVE_HIGH>;
+			gpios = <&tlmm 75 GPIO_ACTIVE_LOW>;
 			linux,input-type = <EV_SW>;
 			linux,code = <SW_MACHINE_COVER>;
 			linux,can-disable;
