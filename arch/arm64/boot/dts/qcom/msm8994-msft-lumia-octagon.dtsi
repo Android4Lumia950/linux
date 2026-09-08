@@ -9,6 +9,9 @@
 
 #include "pm8994.dtsi"
 #include "pmi8994.dtsi"
+#include <dt-bindings/soc/qcom,apr.h>
+#include <dt-bindings/sound/qcom,q6asm.h>
+#include <dt-bindings/sound/qcom,q6dsp-lpass-ports.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/gpio-keys.h>
 #include <dt-bindings/pinctrl/qcom,pmic-gpio.h>
@@ -592,6 +595,16 @@
 		regulator-min-microvolt = <980000>;
 		regulator-max-microvolt = <980000>;
 	};
+};
+
+&mmcc {
+	vdd-gfx-supply = <&vdd_gfx>;
+};
+
+
+&ocmem {
+	compatible = "qcom,msm8994-ocmem";
+	vdd-gfx-supply = <&vdd_gfx>;
 };
 
 &rpm_requests {
