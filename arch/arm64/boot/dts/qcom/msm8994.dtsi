@@ -8,6 +8,7 @@
 #include <dt-bindings/clock/qcom,mmcc-msm8994.h>
 #include <dt-bindings/clock/qcom,rpmcc.h>
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interconnect/qcom,msm8994.h>
 #include <dt-bindings/power/qcom-rpmpd.h>
 
 / {
@@ -745,6 +746,43 @@
 		rpm_msg_ram: sram@fc428000 {
 			compatible = "qcom,rpm-msg-ram";
 			reg = <0xfc428000 0x4000>;
+		};
+
+		bimc: interconnect@fc380000 {
+			reg = <0xfc380000 0x80000>;
+			compatible = "qcom,msm8994-bimc";
+			#interconnect-cells = <1>;
+		};
+
+		snoc: interconnect@fc460000 {
+			reg = <0xfc460000 0x4000>;
+			compatible = "qcom,msm8994-snoc";
+			#interconnect-cells = <1>;
+		};
+
+		pnoc: interconnect@fc468000 {
+			reg = <0xfc468000 0x2400>;
+			compatible = "qcom,msm8994-pnoc";
+			#interconnect-cells = <1>;
+		};
+
+		ovirt: interconnect-ovirt {
+			compatible = "qcom,msm8994-ovirt";
+			#interconnect-cells = <1>;
+		};
+
+		mmssnoc: interconnect@fc478000 {
+			reg = <0xfc478000 0x4000>;
+			compatible = "qcom,msm8994-mnoc";
+			#interconnect-cells = <1>;
+			clocks = <&mmcc MMSS_S0_AXI_CLK>;
+			clock-names = "bus";
+		};
+
+		cnoc: interconnect@fc480000 {
+			reg = <0xfc480000 0x4000>;
+			compatible = "qcom,msm8994-cnoc";
+			#interconnect-cells = <1>;
 		};
 
 		restart@fc4ab000 {
