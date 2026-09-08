@@ -47,3 +47,45 @@
 &tlmm {
 	compatible = "qcom,msm8992-pinctrl";
 };
+
+&mdss {
+	reg = <0xfd900000 0x1000>,
+	      <0xfd9b0000 0x4d4>;
+};
+
+&mdp {
+	reg = <0xfd901000 0x8f000>;
+};
+
+&mdp_iommu {
+	compatible = "qcom,msm8992-mdp-iommu";
+	reg = <0xfd9b4000 0x2600>;
+	ranges = <0 0xfd9bc000 0x3000>;
+};
+
+&dsi0 {
+	reg = <0xfd994000 0x260>;
+};
+
+&dsi0_phy {
+	compatible = "qcom,dsi-phy-20nm-8992";
+	reg = <0xfd994300 0x200>,
+	      <0xfd994500 0x280>,
+	      <0xfd994780 0x30>,
+	      <0xfd996300 0x200>;
+	reg-names = "dsi_pll", "dsi_phy", "dsi_phy_regulator", "dsi_pll_1";
+};
+
+&dsi1 {
+	compatible = "qcom,msm8994-dsi-ctrl", "qcom,mdss-dsi-ctrl";
+	reg = <0xfd996000 0x260>;
+	assigned-clock-parents = <&dsi0_phy 0>, <&dsi0_phy 1>;
+};
+
+&dsi1_phy {
+	compatible = "qcom,dsi-phy-20nm-8992";
+	reg = <0xfd996300 0x200>,
+	      <0xfd996500 0x280>,
+	      <0xfd994780 0x30>;
+	reg-names = "dsi_pll", "dsi_phy", "dsi_phy_regulator";
+};
