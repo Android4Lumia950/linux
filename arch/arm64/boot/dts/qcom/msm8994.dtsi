@@ -743,6 +743,102 @@
 			clocks = <&xo_board>, <&sleep_clk>;
 		};
 
+		gpu_iommu: iommu@fdb10000 {
+			compatible = "qcom,msm8994-gpu-iommu";
+			reg = <0xfdb10000 0x2600>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			#iommu-cells = <1>;
+			ranges = <0 0xfdb18000 0x2000>;
+
+			clocks = <&mmcc OXILICX_AHB_CLK>,
+				 <&mmcc OXILI_GFX3D_CLK>;
+			clock-names = "iface", "tbu";
+			power-domains = <&mmcc OXILI_CX_GDSC>;
+
+			/* GFX3D_USER */
+			iommu-ctx@0 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x0 0x1000>;
+				interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>;
+			};
+
+			/* GFX3D_PRIV */
+			iommu-ctx@1000 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x1000 0x1000>;
+				interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>;
+			};
+		};
+
+		venus_iommu: iommu@fdc84000 {
+			compatible = "qcom,msm8994-venus-iommu";
+			reg = <0xfdc84000 0x2600>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			#iommu-cells = <1>;
+			ranges = <0 0xfdc8c000 0x3000>;
+
+			clocks = <&mmcc VENUS0_AHB_CLK>,
+				 <&mmcc VENUS0_AXI_CLK>,
+				 <&mmcc VENUS0_VCODEC0_CLK>;
+			clock-names = "iface", "bus", "tbu";
+			power-domains = <&mmcc VENUS_GDSC>;
+			qcom,iommu-secure-id = <0>;
+
+			/* VENUS_NS */
+			iommu-ctx@0 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x0 0x1000>;
+				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
+			};
+			/* VENUS_CP */
+			iommu-ctx@1000 {
+				compatible = "qcom,msm-iommu-v1-sec";
+				reg = <0x1000 0x1000>;
+				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
+			};
+			/* VENUS_FW */
+			iommu-ctx@2000 {
+				compatible = "qcom,msm-iommu-v1-sec";
+				reg = <0x2000 0x1000>;
+				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
+			};
+		};
+
+
+		vfe_iommu: iommu@fda44000 {
+			compatible = "qcom,msm8994-vfe-iommu";
+			reg = <0xfda44000 0x8000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			#iommu-cells = <1>;
+			ranges = <0 0xfda4c000 0x3000>;
+
+			clocks = <&mmcc CAMSS_VFE_VFE_AHB_CLK>,
+                 		<&mmcc CAMSS_VFE_VFE_AXI_CLK>,
+				<&mmcc CAMSS_AHB_CLK>,
+				<&mmcc CAMSS_TOP_AHB_CLK>;
+        		clock-names = "iface", "bus", "alt_iface", "alt_bus";
+			power-domains = <&mmcc VFE_GDSC>;
+
+			//qcom,iommu-secure-id = <19>;
+
+			/* vfe */
+			iommu-ctx@0 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x0 0x1000>;
+				interrupts = <GIC_SPI 65 IRQ_TYPE_LEVEL_HIGH>;
+			};
+			/* cpp */
+			iommu-ctx@1000 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x1000 0x1000>;
+				interrupts = <GIC_SPI 65 IRQ_TYPE_LEVEL_HIGH>;
+			};
+
+		};
+
 		rpm_msg_ram: sram@fc428000 {
 			compatible = "qcom,rpm-msg-ram";
 			reg = <0xfc428000 0x4000>;
@@ -1113,6 +1209,29 @@
 					       <1020000000>,
 					       <960000000>,
 					       <600000000>;
+		};
+
+		mdp_iommu: iommu@fd9cc000 {
+			compatible = "qcom,msm8994-mdp-iommu";
+			reg = <0xfd9cc000 0x2600>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			#iommu-cells = <1>;
+			ranges = <0 0xfd9d4000 0x3000>;
+
+			clocks = <&mmcc MDSS_AHB_CLK>,
+				 <&mmcc MDSS_AXI_CLK>;
+			clock-names = "iface", "bus";
+			power-domains = <&mmcc MDSS_GDSC>;
+			qcom,iommu-secure-id = <1>;
+
+			/* MDP_0 */
+			iommu-ctx@0 {
+				compatible = "qcom,msm-iommu-v1-ns";
+				reg = <0x0 0x1000>;
+				interrupts = <GIC_SPI 47 IRQ_TYPE_LEVEL_HIGH>;
+			};
+
 		};
 
 		ocmem: sram@fdd00000 {
