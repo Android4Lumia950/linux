@@ -19,6 +19,7 @@
  */
 /delete-node/ &adsp_mem;
 /delete-node/ &audio_mem;
+/delete-node/ &dfps_data_mem;
 /delete-node/ &cont_splash_mem;
 /delete-node/ &mba_mem;
 /delete-node/ &mpss_mem;
@@ -140,6 +141,18 @@
 		 * using JTAG for the Qualcomm Peripheral Image regions.
 		 */
 
+		audio_mem: audio-pool {
+			compatible = "shared-dma-pool";
+			size = <0x0 0x800000>;
+			alignment = <0x0 0x400000>;
+			reusable;
+
+		};
+
+		/* For testing, we are using lk2nd. However once this is done,
+		 * we should revert and use the original UEFI memory layout.
+		 * For now, comment these out as it just reserves memory for no reason.
+		-------------------------------------------------------------------------------
 		uefi_mem: memory@200000 {
 			reg = <0 0x00200000 0 0x100000>;
 			no-map;
@@ -202,6 +215,12 @@
 
 		rescached_mem: memory@400000 {
 			reg = <0 0x00c50000 0 0xb0000>;
+			no-map;
+		};
+		*/
+
+		cont_splash_mem: memory@3400000 {
+			reg = <0 0x03400000 0 0xc00000>;
 			no-map;
 		};
 
@@ -281,6 +300,16 @@
 		cnss_mem: memory@ef00000 {
 			reg = <0 0x0ef00000 0 0x300000>;
 			no-map;
+		};
+
+		ramoops@d9d00000 {
+			compatible = "ramoops";
+			reg = <0x0 0xd9d00000 0x0 0x100000>;
+			record-size = <0x20000>;
+			console-size = <0x80000>;
+			pmsg-size = <0x20000>;
+			ecc-size = <0>;
+			max-reason = <3>;
 		};
 	};
 };
