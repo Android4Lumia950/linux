@@ -282,6 +282,14 @@
 		interrupt-parent = <&tlmm>;
 		interrupts = <77 IRQ_TYPE_EDGE_FALLING>;
 
+		vdd-supply = <&vreg_l22a_3p0>;
+		reset-gpios = <&tlmm 38 GPIO_ACTIVE_LOW>;
+
+		syna,startup-delay-ms = <60>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&touch_pins>;
+
 		rmi4-f01@1 {
 			reg = <0x01>;
 			syna,nosleep-mode = <1>;
