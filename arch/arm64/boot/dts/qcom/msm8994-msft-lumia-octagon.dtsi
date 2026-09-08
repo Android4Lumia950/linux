@@ -47,6 +47,21 @@
 	};
 
 	clocks {
+		compatible = "simple-bus";
+
+		divclk1: divclk1 {
+			compatible = "gpio-gate-clock";
+			#clock-cells = <0>;
+
+			clocks = <&rpmcc RPM_SMD_DIV_CLK1>;
+			enable-gpios = <&pm8994_gpios 15 0>;
+
+			pinctrl-names = "default";
+			pinctrl-0 = <&audio_mclk>;
+		};
+	};
+
+	clocks {
 		divclk4: divclk4 {
 			compatible = "fixed-clock";
 			#clock-cells = <0>;
