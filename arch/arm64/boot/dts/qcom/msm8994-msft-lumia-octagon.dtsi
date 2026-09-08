@@ -85,7 +85,7 @@
 			label = "Camera Focus";
 			gpios = <&pm8994_gpios 5 GPIO_ACTIVE_LOW>;
 			linux,input-type = <1>;
-			linux,code = <KEY_VOLUMEUP>;
+			linux,code = <KEY_CAMERA_FOCUS>;
 			wakeup-source;
 			debounce-interval = <15>;
 		};
