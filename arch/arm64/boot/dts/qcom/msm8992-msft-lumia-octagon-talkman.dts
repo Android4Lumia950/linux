@@ -8,9 +8,106 @@
 
 #include "msm8992.dtsi"
 #include "msm8994-msft-lumia-octagon.dtsi"
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Microsoft Lumia 950";
 	compatible = "microsoft,talkman", "qcom,msm8992";
 	chassis-type = "handset";
+};
+
+&gpu {
+	status = "okay";
+};
+
+&mdss {
+	status = "okay";
+};
+
+&dsi0 {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	vdda-supply = <&vreg_l2a_1p25>;
+	vddio-supply = <&vreg_l12a_1p8>;
+	vcca-supply = <&vreg_l28a_1p0>;
+	vdd-supply = <&vreg_l14a_1p8>;
+
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&mdss_dsi_default &mdss_te_default>;
+	pinctrl-1 = <&mdss_dsi_sleep &mdss_te_sleep>;
+
+	qcom,dual-dsi-mode;
+	qcom,sync-dual-dsi;
+	qcom,master-dsi;
+
+	panel@0 {
+		compatible = "samsung,ams5208r08";
+		reg = <0>;
+
+		reset-gpios = <&tlmm 78 GPIO_ACTIVE_LOW>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				duke_in0: endpoint {
+					remote-endpoint = <&dsi0_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				duke_in1: endpoint {
+					remote-endpoint = <&dsi1_out>;
+				};
+			};
+		};
+	};
+};
+
+&dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&duke_in0>;
+};
+
+&dsi0_phy {
+	status = "okay";
+
+	vddio-supply = <&vreg_l12a_1p8>;
+	vcca-supply = <&vreg_l28a_1p0>;
+
+	qcom,dsi-phy-regulator-ldo-mode;
+};
+
+&dsi1 {
+	status = "okay";
+
+	vdda-supply = <&vreg_l2a_1p25>;
+	vddio-supply = <&vreg_l12a_1p8>;
+	vcca-supply = <&vreg_l28a_1p0>;
+	vdd-supply = <&vreg_l14a_1p8>;
+
+	qcom,dual-dsi-mode;
+	qcom,sync-dual-dsi;
+
+	assigned-clock-parents = <&dsi0_phy 0>, <&dsi0_phy 1>;
+};
+
+&dsi1_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&duke_in1>;
+};
+
+&dsi1_phy {
+	status = "okay";
+
+	vddio-supply = <&vreg_l12a_1p8>;
+	vcca-supply = <&vreg_l28a_1p0>;
+
+	qcom,dsi-phy-regulator-ldo-mode;
 };
