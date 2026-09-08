@@ -874,6 +874,23 @@
 };
 
 &tlmm {
+	touch_pins: touch {
+		irq {
+			pins = "gpio77";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-up;
+			input-enable;
+		};
+		reset {
+			pins = "gpio38";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-disable;
+			output-high;
+		};
+	};
+
 	grip_default: grip-default-state {
 		pins = "gpio39";
 		function = "gpio";
@@ -900,5 +917,48 @@
 		function = "gpio";
 		drive-strength = <2>;
 		bias-disable;
+	};
+
+	mdss_dsi_default: mdss-dsi-default-state {
+		pins = "gpio78";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	mdss_dsi_sleep: mdss-dsi-sleep-state {
+		pins = "gpio78";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	mdss_te_default: mdss-te-default-state {
+		pins = "gpio10";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	mdss_te_sleep: mdss-te-sleep-state {
+		pins = "gpio10";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	quat_mi2s_default: quat-mi2s-default-state {
+		pins = "gpio58", "gpio59", "gpio62";
+		function = "qua_mi2s";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	wcd_intr_default: wcd-intr-default-state {
+		pins = "gpio72";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+		input-enable;
 	};
 };
