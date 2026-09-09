@@ -314,6 +314,43 @@
 			ecc-size = <0>;
 			max-reason = <3>;
 		};
+
+	};
+
+	sound {
+		compatible = "qcom,msm8994-sndcard";
+		model = "Octagon";
+
+		/* lpaif_quat_mode_muxsel: machine selects I2S vs PCM. */
+		reg = <0x0 0xfe037000 0x0 0x4>;
+		reg-names = "lpaif_quat_mode_muxsel";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&quat_mi2s_default>;
+
+		mm1-dai-link {
+			link-name = "MultiMedia1";
+
+			cpu {
+				sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
+			};
+		};
+
+		speaker-dai-link {
+			link-name = "Speaker";
+
+			cpu {
+				sound-dai = <&q6afedai QUATERNARY_MI2S_RX>;
+			};
+
+			platform {
+				sound-dai = <&q6routing>;
+			};
+
+			codec {
+				sound-dai = <&tas2553>;
+			};
+		};
 	};
 };
 
@@ -362,6 +399,8 @@
 	 * be written for this device.
 	 */
 	tas2553: tas2553@40 {
+		#sound-dai-cells = <0>;
+
 		compatible = "ti,tas2552";
 		reg = <0x40>;
 
@@ -530,6 +569,15 @@
 		};
 	};
 
+	audio_mclk: clk_div1 {
+		pinconf {
+			pins = "gpio15";
+			function = PMIC_GPIO_FUNC_FUNC1;
+			power-source = <PM8994_GPIO_S4>;
+		};
+	};
+
+
 	divclk4_pin_a: divclk4-state {
 		pinconf {
 			pins = "gpio18";
@@ -538,6 +586,10 @@
 			bias-disable;
 		};
 	};
+};
+
+&pm8994_resin {
+	status = "okay";
 };
 
 &pm8994_pon {
@@ -936,6 +988,15 @@
 	vqmmc-supply = <&vreg_l13a_2p95>;
 
 	cd-gpios = <&pm8994_gpios 8 GPIO_ACTIVE_LOW>;
+};
+
+&adsp_pil {
+	status = "okay";
+	memory-region = <&adsp_mem>;
+};
+
+&q6asmdai {
+	memory-region = <&audio_mem>;
 };
 
 &tlmm {
