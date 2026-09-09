@@ -1108,6 +1108,19 @@ config DRM_PANEL_SAMSUNG_SOFEF00
 
 	    Samsung AMS628NW01 (found in OnePlus 6, 1080x2280@60Hz)
 
+config DRM_PANEL_SAMSUNG_AMS567DJ06
+	tristate "Samsung AMS567DJ06 panel driver"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	help
+	  Say Y if you want to enable support for the Samsung AMOLED
+	  AMS567DJ06 panel.
+	  Currently supported panels:
+
+	    Samsung AMS567DJ06 (found in Lumia 950XL, 1440x2560@60Hz, dualDSI)
+		Samsung AMS5208R08 (found in Lumia 950, 1440x2560@60Hz, dualDSI)
+
+
 config DRM_PANEL_SEIKO_43WVF1G
 	tristate "Seiko 43WVF1G panel"
 	depends on OF
