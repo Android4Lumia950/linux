@@ -29,6 +29,11 @@
 			interrupt-controller;
 			#interrupt-cells = <2>;
 		};
+
+		pmi8994_fg: fuel-gauge@4000 {
+			compatible = "qcom,pmi8994-fg";
+			reg = <0x4000>;
+		};
 	};
 
 	pmic@3 {

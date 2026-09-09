@@ -15,6 +15,37 @@
 	model = "Microsoft Lumia 950";
 	compatible = "microsoft,talkman", "qcom,msm8992";
 	chassis-type = "handset";
+
+	battery: battery {
+		compatible = "simple-battery";
+		device-chemistry = "lithium-ion-polymer";
+		charge-full-design-microamp-hours = <3000000>;
+		voltage-max-design-microvolt = <4400000>;
+		voltage-min-design-microvolt = <2800000>;
+	};
+};
+
+&pmi8994_fg {
+	monitored-battery = <&battery>;
+	qcom,battery-type = "microsoft_bvt5e_3000mah";
+	qcom,fg-profile-data = [
+		E3 83 FA 7C 3B 81 76 77
+		59 83 F5 66 2B 88 9E 8F
+		05 82 B5 9A A3 BD 65 CA
+		55 10 F3 83 3C 7D 63 81
+		BA 77 4F 83 93 6A 48 79
+		51 87 37 82 89 9A 3A BE
+		10 D0 58 0D E3 0B 01 5A
+		14 70 B8 FE BB 44 62 44
+		07 41 00 00 D9 46 07 39
+		FE 12 00 00 00 00 00 00
+		00 00 00 00 83 70 28 6B
+		25 68 1A 81 FE 74 62 63
+		F1 60 00 7B AE 6F 42 60
+		9D 74 FD A2 18 70 61 AE
+		5F A0 71 0C 28 00 FF 36
+		F0 11 30 03 00 00 00 0C
+	];
 };
 
 &gpu {

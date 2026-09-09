@@ -15,6 +15,37 @@
 	model = "Microsoft Lumia 950 XL";
 	compatible = "microsoft,cityman", "qcom,msm8994";
 	chassis-type = "handset";
+
+	battery: battery {
+		compatible = "simple-battery";
+		device-chemistry = "lithium-ion-polymer";
+		charge-full-design-microamp-hours = <3340000>;
+		voltage-max-design-microvolt = <4400000>;
+		voltage-min-design-microvolt = <2800000>;
+	};
+};
+
+&pmi8994_fg {
+	monitored-battery = <&battery>;
+	qcom,battery-type = "microsoft_bvt4d_3340mah";
+	qcom,fg-profile-data = [
+		F2 83 90 7D AC 81 23 7C
+		64 83 55 74 27 89 0D 94
+		38 82 29 98 0A B5 17 C0
+		58 18 FF 83 9D 7D A8 81
+		1A 7C 5D 83 FF 4E 84 82
+		25 8E 17 82 B4 9A F7 BD
+		59 CB 58 0E 71 0D 1F 5A
+		14 70 B8 FE E4 45 49 37
+		77 41 00 00 23 47 7A 32
+		AF 31 00 00 00 00 00 00
+		00 00 00 00 80 6B 23 6A
+		EA 68 75 81 61 74 D9 62
+		BE 6B 31 80 25 6E E6 59
+		80 80 A6 C0 0F F0 60 3A
+		5E A0 71 0C 28 00 FF 36
+		F0 11 30 03 00 00 00 0C
+	];
 };
 
 &gpu {
