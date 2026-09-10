@@ -110,6 +110,16 @@ config TYPEC_WUSB3801
 	  If you choose to build this driver as a dynamically linked module, the
 	  module will be called wusb3801.ko.
 
+config TYPEC_UC120
+	tristate "Lattice UC120 Type-C CC PHY (iCE5LP2K)"
+	depends on SPI
+	depends on POWER_SUPPLY
+	help
+	  Lattice UC120 USB-C CC PHY, factory-programmed on an iCE5LP2K
+	  used on Microsoft Octagon(Lumia 950 and 950 XL).
+
+	  If you choose to build this as a module, it will be called uc120.
+
 source "drivers/usb/typec/mux/Kconfig"
 
 source "drivers/usb/typec/altmodes/Kconfig"
