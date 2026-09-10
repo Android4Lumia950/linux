@@ -767,6 +767,21 @@ config BATTERY_QCOM_PMI8994_FG
 	  To compile this driver as module, choose M here: the
 	  module will be called qcom-pmi8994-fg.
 
+config CHARGER_QCOM_SMBCHG
+	tristate "Qualcomm PMI8994/PMI8996 Switch-Mode Battery Charger"
+	depends on MFD_SPMI_PMIC || COMPILE_TEST
+	depends on OF
+	depends on EXTCON
+	depends on REGULATOR
+	select QCOM_PMIC_SEC_WRITE
+	help
+	  Say Y to include support for the Switch-Mode Battery Charger
+	  (SMBCHG) found in Qualcomm PMICs such as PMI8994 and PMI8996.
+	  USB 5 V input, APSD, AICL, and an OTG VBUS boost regulator.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called qcom-smbchg.
+
 config CHARGER_PM8916_LBC
 	tristate "Qualcomm PM8916 Linear Battery Charger support"
 	depends on MFD_SPMI_PMIC || COMPILE_TEST
