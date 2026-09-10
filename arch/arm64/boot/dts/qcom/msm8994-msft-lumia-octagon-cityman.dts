@@ -22,7 +22,14 @@
 		charge-full-design-microamp-hours = <3340000>;
 		voltage-max-design-microvolt = <4400000>;
 		voltage-min-design-microvolt = <2800000>;
+		charge-term-current-microamp = <100000>;
+		constant-charge-current-max-microamp = <2000000>;
+		constant-charge-voltage-max-microvolt = <4350000>;
 	};
+};
+
+&pmi8994_smbchg {
+	monitored-battery = <&battery>;
 };
 
 &pmi8994_fg {
