@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/power/supply/qcom,pmi8994-fg.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Qualcomm PMI8994 QPNP fuel gauge
+
+maintainers:
+  - Konrad Dybcio <konradybcio@kernel.org>
+
+description: |
+  QPNP fuel gauge in PMI8994. State of charge, voltage, current, and
+  battery temperature live in FG SRAM, accessed through the MEMIF
+  peripheral at 0x4400. The gauge identifies the pack by measuring
+  the battery ID resistor.
+
+  A 128-byte profile is loaded only when the measured ID is within
+  qcom,batt-id-range-pct of qcom,batt-id-kohm. Otherwise the hardware
+  SoC is reported and SRAM is left unchanged.
+
+allOf:
+  - $ref: power-supply.yaml#
+
+properties:
+  compatible:
+    const: qcom,pmi8994-fg
+
+  reg:
+    maxItems: 1
+    description: FG_SOC peripheral base (0x4000 on PMI8994)
+
+  qcom,batt-id-kohm:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: Expected battery ID resistor in kΩ
+
+  qcom,batt-id-range-pct:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: |
+      Allowed deviation of the measured ID from qcom,batt-id-kohm,
+      as a percentage of that value.
+
+  qcom,fg-profile-data:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+    minItems: 128
+    maxItems: 128
+    description: 128-byte FG SRAM profile from the PMI8994 GUI tool
+
+  qcom,battery-type:
+    $ref: /schemas/types.yaml#/definitions/string
+
+  qcom,thermal-coefficients:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+    minItems: 6
+    maxItems: 6
+    description: Six-byte thermistor coefficients written to SRAM 0x444
+
+  qcom,cool-bat-decidegc:
+    $ref: /schemas/types.yaml#/definitions/int32
+  qcom,warm-bat-decidegc:
+    $ref: /schemas/types.yaml#/definitions/int32
+  qcom,cold-bat-decidegc:
+    $ref: /schemas/types.yaml#/definitions/int32
+  qcom,hot-bat-decidegc:
+    $ref: /schemas/types.yaml#/definitions/int32
+
+  qcom,fg-cutoff-voltage-mv:
+    $ref: /schemas/types.yaml#/definitions/uint32
+  qcom,fg-iterm-ma:
+    $ref: /schemas/types.yaml#/definitions/uint32
+  qcom,fg-chg-iterm-ma:
+    $ref: /schemas/types.yaml#/definitions/uint32
+  qcom,resume-soc:
+    $ref: /schemas/types.yaml#/definitions/uint32
+
+  monitored-battery: true
+
+required:
+  - compatible
+  - reg
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    pmic {
+      #address-cells = <1>;
+      #size-cells = <0>;
+
+      fuel-gauge@4000 {
+        compatible = "qcom,pmi8994-fg";
+        reg = <0x4000>;
+        qcom,batt-id-kohm = <330>;
+        qcom,batt-id-range-pct = <15>;
+      };
+    };

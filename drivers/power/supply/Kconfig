@@ -756,6 +756,17 @@ config BATTERY_PM8916_BMS_VM
 	  To compile this driver as module, choose M here: the
 	  module will be called pm8916_bms_vm.
 
+config BATTERY_QCOM_PMI8994_FG
+	tristate "Qualcomm PMI8994 QPNP fuel gauge"
+	depends on MFD_SPMI_PMIC || COMPILE_TEST
+	help
+	  Say Y to add support for the QPNP fuel gauge in PMI8994.
+	  The gauge reports SoC, voltage, current, temperature, and
+	  the battery-ID resistor through the MEMIF SRAM window.
+
+	  To compile this driver as module, choose M here: the
+	  module will be called qcom-pmi8994-fg.
+
 config CHARGER_PM8916_LBC
 	tristate "Qualcomm PM8916 Linear Battery Charger support"
 	depends on MFD_SPMI_PMIC || COMPILE_TEST
